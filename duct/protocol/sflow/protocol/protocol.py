@@ -4,8 +4,7 @@
 
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
-import xdrlib
-
+from duct.protocol.sflow.protocol.xdr import Unpacker
 from duct.protocol.sflow.protocol import flows, counters
 
 
@@ -15,7 +14,7 @@ class Sflow(object):
     def __init__(self, payload, host):
         self.host = host
         assert isinstance(payload, bytes)
-        u = xdrlib.Unpacker(payload)
+        u = Unpacker(payload)
 
         self.version = u.unpack_uint()
 
@@ -81,7 +80,7 @@ class FlowSample(object):
         for _i in range(self.record_count):
             flow_format = u.unpack_uint()
             flow_head = u.unpack_opaque()
-            flow_u = xdrlib.Unpacker(flow_head)
+            flow_u = Unpacker(flow_head)
 
             d = flows.getDecoder(flow_format)
             if d:
@@ -108,6 +107,6 @@ class CounterSample(object):
             d = counters.getDecoder(counter_format)
 
             if d:
-                self.counters[counter_format] = d(xdrlib.Unpacker(counter))
+                self.counters[counter_format] = d(Unpacker(counter))
             else:
                 print("Unknown format:", counter_format)

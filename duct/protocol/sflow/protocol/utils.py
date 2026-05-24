@@ -15,9 +15,10 @@ def unpack_address(u):
 
     if addrtype == 1:
         address = u.unpack_fopaque(4)
-
-    if addrtype == 2:
+    elif addrtype == 2:
         address = u.unpack_fopaque(16)
+    else:
+        address = None
 
     return address
 
