@@ -170,8 +170,8 @@ Step 5: Using Duct to retrieve stats from munin-node
 ------------------------------------------------------
 
 First of all, install Duct ::
-    
-    $ pip install duct
+
+    $ pip install ducted
 
 Next create /etc/duct and a `duct.yml` file in that directory.
 
@@ -201,14 +201,12 @@ by setting the dot separated prefix for the service name and munin plugin.
 
 You can now start Duct ::
 
-    $ twistd -n duct -c /etc/duct/duct.yml
-    2014-10-22 13:30:38+0200 [-] Log opened.
-    2014-10-22 13:30:38+0200 [-] twistd 14.0.2 (/home/colin/riemann-duct/ve/bin/python 2.7.6) starting up.
-    2014-10-22 13:30:38+0200 [-] reactor class: twisted.internet.epollreactor.EPollReactor.
-    2014-10-22 13:30:38+0200 [-] Starting factory <duct.protocol.riemann.RiemannClientFactory instance at 0x7faeec021b90>
+    $ ductd -c /etc/duct/duct.yml
+    2024-01-01 13:30:38 duct.service INFO Starting Duct service
+    2024-01-01 13:30:38 duct.outputs.riemann INFO Connected to Riemann at localhost:5555
 
-This pretty much indiciates everything is alright, or else we'd see quickly
-see some errors.
+This pretty much indicates everything is alright, or else we'd see errors
+in the log.
 
 Next we will add some graphs to Grafana
 

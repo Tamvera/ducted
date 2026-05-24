@@ -101,16 +101,13 @@ Duct for others to benefit from!
 Handling asynchronous tasks
 ===========================
 
-Since Duct is written using the Twisted asynchronous framework, sources can
-(and in most cases *must*) make full use of it to implement network checks, or
-execute other processes.
+Duct is built on Python asyncio. Sources that perform I/O — network checks,
+subprocess execution, database queries — must be coroutines (``async def``).
 
 The simplest example of a source which executes an external process is the
 ProcessCount check::
 
     from zope.interface import implementer
-
-    from twisted.internet import defer
 
     from duct.interfaces import IDuctSource
     from duct.objects import Source
@@ -118,20 +115,15 @@ ProcessCount check::
 
     @implementer(IDuctSource)
     class ProcessCount(Source):
-        @defer.inlineCallbacks
-        def get(self):
-            out, err, code = yield fork('/bin/ps', args=('-e',))
+        async def get(self):
+            out, err, code = await fork('/bin/ps', args=('-e',))
 
             count = len(out.strip('\n').split('\n'))
 
-            defer.returnValue(
-                self.createEvent('ok', 'Process count %s' % (count), count)
-            )
+            return self.createEvent('ok', 'Process count %s' % (count), count)
 
-For more information please read the Twisted documentation at https://twistedmatrix.com/trac/wiki/Documentation
-
-The :py:meth:`duct.utils.fork` method returns a deferred which can timeout
-after a specified time.
+:py:meth:`duct.utils.fork` is a coroutine that runs a subprocess and raises
+:class:`duct.utils.Timeout` if it exceeds the optional ``timeout`` argument.
 
 Thinking outside the box
 ========================
@@ -145,46 +137,35 @@ processes and relays events to Riemann implementing some protocol.
 Here is an example of a source which listens for TCP connections to port
 8000, accepting any number on a line and passing that to the event queue::
 
-    from twisted.internet.protocol import Factory
-    from twisted.protocols.basic import LineReceiver
-    from twisted.internet import reactor
+    import asyncio
 
     from zope.interface import implementer
 
     from duct.interfaces import IDuctSource
     from duct.objects import Source
 
-    class Numbers(LineReceiver):
-        def __init__(self, source):
-            self.source = source
-
-        def lineReceived(self, line):
-            """
-            Send any numbers received back to the Duct queue
-            """
-            print repr(line)
-            try:
-                num = float(line)
-                self.source.queueBack(
-                    self.source.createEvent('ok', 'Number: %s' % num, num)
-                )
-            except:
-                pass
-
-    class NumbersFactory(Factory):
-        def __init__(self, source):
-            self.source = source
-
-        def buildProtocol(self, addr):
-            return Numbers(self.source)
-
     @implementer(IDuctSource)
     class NumberProxy(Source):
-        def startTimer(self):
+        async def startTimer(self):
             # Override starting the source timer, we don't need it
-            f = NumbersFactory(self)
-            reactor.listenTCP(8000, f)
+            server = await asyncio.start_server(
+                self._handle_client, '0.0.0.0', 8000)
+            async with server:
+                await server.serve_forever()
 
-        def get(self):
-            # Implement the get method, but we can ignore it
+        async def _handle_client(self, reader, writer):
+            while True:
+                line = await reader.readline()
+                if not line:
+                    break
+                try:
+                    num = float(line.decode().strip())
+                    self.queueBack(
+                        self.createEvent('ok', 'Number: %s' % num, num)
+                    )
+                except ValueError:
+                    pass
+            writer.close()
+
+        async def get(self):
             pass

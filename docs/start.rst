@@ -4,17 +4,9 @@ Getting started
 Installation
 ============
 
-Install via pypi ::
+Requires Python 3.11 or newer. Install via pip ::
 
     $ pip install ducted
-
-Or get the latest `.deb` or `.rpm` release from https://github.com/ducted/duct/releases/latest ::
-    
-    $ aptitude install python-twisted python-protobuf python-yaml
-    $ wget https://github.com/ducted/duct/releases/download/1.2/duct_1.2_amd64.deb
-    $ dpkg -i duct_1.2_amd64.deb
-
-This also gives you an init script and default config in /etc/duct/
 
 Creating a configuration file
 =============================
@@ -250,10 +242,14 @@ Example ::
 Note: Currently Duct will _not_ perform any host key checking.
 
 Starting Duct
-===============
+=============
 
-To start Duct, simply use twistd to run the service and pass a config file::
+To start Duct, pass a config file to the ``ductd`` command::
 
-    twistd -n duct -c duct.yml
+    ductd -c duct.yml
 
-If you're using the Debian package then an init script is included.
+Or equivalently via the module entry point::
+
+    python -m duct -c duct.yml
+
+Use ``-v`` / ``--verbose`` to enable debug logging.

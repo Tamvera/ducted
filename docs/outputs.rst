@@ -41,23 +41,24 @@ convenience ::
 Writing your own outputs
 ========================
 
-An output clas should subclass :class:`duct.objects.Output`.
+An output class should subclass :class:`duct.objects.Output`.
 
-The output can implement a `createClient` method which starts the output in
-whatever way necessary and can be a deferred. The output must also have a
-`eventsReceived` method which takes a list of :class:`duct.objects.Event`
-objects and process them accordingly, it can also be a deferred.
+The output can implement a ``createClient`` coroutine which starts the output
+(opens connections, etc.) at startup. The output must also have an
+``eventsReceived`` method which receives a list of :class:`duct.objects.Event`
+objects; it may be a plain method or an ``async def`` coroutine.
 
-An example logging source::
+An example logging output::
 
-    from twisted.internet import reactor, defer
-    from twisted.python import log
+    import logging
 
     from duct.objects import Output
 
+    log = logging.getLogger(__name__)
+
     class Logger(Output):
         def eventsReceived(self, events):
-            log.msg("Events dequeued: %s" % len(events))
+            log.info("Events dequeued: %s", len(events))
 
 If you save this as `test.py` the basic configuration you need is simply ::
 
@@ -68,12 +69,11 @@ If you save this as `test.py` the basic configuration you need is simply ::
 
         - output: test.Logger
 
-You should now see how many events are exiting in the Duct log file ::
+You should now see how many events are exiting in the Duct log ::
 
-    2014-10-24 15:35:27+0200 [-] Starting protocol <duct.protocol.riemann.RiemannUDP object at 0x7f3b5ae15810>
-    2014-10-24 15:35:28+0200 [-] Events dequeued: 7
-    2014-10-24 15:35:29+0200 [-] Events dequeued: 2
-    2014-10-24 15:35:30+0200 [-] Events dequeued: 3
+    2024-01-01 15:35:28 root INFO Events dequeued: 7
+    2024-01-01 15:35:29 root INFO Events dequeued: 2
+    2024-01-01 15:35:30 root INFO Events dequeued: 3
 
 Events can be routed in different ways to outputs, see the Getting started
 guide for more details
