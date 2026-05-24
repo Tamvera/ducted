@@ -8,8 +8,6 @@ import time
 
 from zope.interface import implementer
 
-from twisted.internet import defer
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 from duct.utils import fork
@@ -32,13 +30,12 @@ class DarwinRTSP(Source):
     metrics from that host.
     """
 
-    @defer.inlineCallbacks
-    def get(self):
+    async def get(self):
         host = self.config.get('destination', self.hostname)
 
         t0 = time.time()
         try:
-            _out, err, code = yield fork(
+            _out, err, code = await fork(
                 '/usr/bin/avprobe',
                 args=('rtsp://%s/sample_100kbit.mp4' % host, ),
                 timeout=30.0
@@ -65,4 +62,4 @@ class DarwinRTSP(Source):
                                  'Unable to stream %s:%s' % (host, error),
                                  t_delta)
 
-        defer.returnValue(e)
+        return e

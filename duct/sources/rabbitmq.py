@@ -10,10 +10,11 @@ import time
 
 from zope.interface import implementer
 
-from twisted.internet import defer
-from twisted.python import log
+import logging
 
 from duct.interfaces import IDuctSource
+
+log = logging.getLogger(__name__)
 from duct.objects import Source
 
 
@@ -47,13 +48,12 @@ class Queues(Source):
         self.last_ready = 0
         self.last_unack = 0
 
-    @defer.inlineCallbacks
-    def get(self):
+    async def get(self):
         vhost = self.config.get('vhost', '/')
 
         mqctl = self.config.get('rabbitmqctl', '/usr/sbin/rabbitmqctl')
 
-        out, err, code = yield self.fork(mqctl, args=(
+        out, err, code = await self.fork(mqctl, args=(
             'list_queues', '-p', vhost, 'name', 'messages_ready',
             'messages_unacknowledged'
         ))
@@ -141,6 +141,6 @@ class Queues(Source):
 
             self.last_t = t
 
-            defer.returnValue(events)
+            return events
         else:
-            log.msg('Error running rabbitmqctl: ' + repr(err))
+            log.warning('Error running rabbitmqctl: %s', repr(err))

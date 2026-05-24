@@ -24,7 +24,8 @@ from construct.adapters import MappingError
 
 from duct.protocol.sflow.protocol import utils
 
-from twisted.python import log
+import logging
+log = logging.getLogger(__name__)
 
 
 class IPv4Header(object):
@@ -207,7 +208,7 @@ class ISO8023Header(object):
             ethernet = frame.parse(data[:14])
         except MappingError:
             self.frame = None
-            log.msg("Broken ethernet header %s" % repr(data))
+            log.warning("Broken ethernet header %s", repr(data))
             return
         data = data[14:]
 

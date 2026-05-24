@@ -4,7 +4,7 @@ Example configurations
 Replacing Munin
 ===============
 
-The first step is to create a TRIG stack (Duct Riemann InfluxDB Grafana).
+The first step is to create a DRIG stack (Duct Riemann InfluxDB Grafana).
 
 Step 1: Install Riemann
 -----------------------

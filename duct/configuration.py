@@ -10,7 +10,9 @@ import itertools
 import copy
 import yaml
 
-from twisted.python import log
+import logging
+
+log = logging.getLogger(__name__)
 
 class ConfigurationError(Exception):
     """General exception class for Duct configuration issues
@@ -23,11 +25,11 @@ class ConfigFile(object):
     def __init__(self, path):
         if os.path.exists(path):
             with open(path, 'rt') as conf:
-                self.raw_config = yaml.load(conf)
+                self.raw_config = yaml.load(conf, Loader=yaml.SafeLoader)
 
             if not self.raw_config:
                 self.raw_config = {}
-                log.msg("Warning: No configuration content")
+                log.warning("Warning: No configuration content")
         else:
             raise Exception("Configuration file '%s' not found" % path)
 
@@ -92,7 +94,7 @@ class ConfigFile(object):
 
                 for conf_file in files:
                     with open(conf_file, 'rt') as yaml_path:
-                        conf = yaml.load(yaml_path)
+                        conf = yaml.load(yaml_path, Loader=yaml.SafeLoader)
                         for key, val in conf.items():
                             if key in self.raw_config:
                                 if both(val, self.raw_config[key], dict):
@@ -108,10 +110,10 @@ class ConfigFile(object):
                                     self.raw_config[key] = val
                             else:
                                 self.raw_config[key] = val
-                        log.msg('Loadded additional configuration from %s'
+                        log.warning('Loadded additional configuration from %s'
                                 % conf_file)
             else:
-                log.msg(
+                log.warning(
                     'Config Error: include_path %s does not exist' % ipath)
 
     def _build_blueprints(self):

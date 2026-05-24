@@ -4,38 +4,16 @@
 
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
+import asyncio
+import logging
+import ssl
 import time
 import random
 
-from twisted.internet import reactor, defer, task
-from twisted.python import log
-
-# pylint: disable=C0412
-try:
-    from OpenSSL import SSL
-    from twisted.internet import ssl
-except:
-    SSL = None
-
 from duct.protocol import riemann
-
 from duct.objects import Output
 
-if SSL:
-    class ClientTLSContext(ssl.ClientContextFactory):
-        """SSL Context factory
-        """
-        def __init__(self, key, cert):
-            self.key = key
-            self.cert = cert
-
-        def getContext(self):
-            self.method = SSL.TLSv1_METHOD
-            ctx = ssl.ClientContextFactory.getContext(self)
-            ctx.use_certificate_file(self.cert)
-            ctx.use_privatekey_file(self.key)
-
-            return ctx
+log = logging.getLogger(__name__)
 
 
 class RiemannTCP(Output):
@@ -47,134 +25,114 @@ class RiemannTCP(Output):
     :type server: str.
     :param port: Riemann server port (default: 5555)
     :type port: int.
-    :param failover: Enable server failover, in which case `server` may be a
-                     list
+    :param failover: Enable server failover; `server` may be a list
     :type failover: bool.
     :param maxrate: Maximum de-queue rate (0 is no limit)
     :type maxrate: int.
-    :param maxsize: Maximum queue size (0 is no limit, default is 250000)
+    :param maxsize: Maximum queue size (default: 250000)
     :type maxsize: int.
     :param interval: De-queue interval in seconds (default: 1.0)
     :type interval: float.
     :param pressure: Maximum backpressure (-1 is no limit)
     :type pressure: int.
-    :param tls: Use TLS (default false)
+    :param tls: Use TLS (default: false)
     :type tls: bool.
-    :param cert: Host certificate path
+    :param cert: Client certificate path
     :type cert: str.
-    :param key: Host private key path
+    :param key: Client private key path
     :type key: str.
-    :param allow_nan: Send events with None metric value (default true)
-    :type allow_nan: bool
+    :param allow_nan: Send events with None metric value (default: true)
+    :type allow_nan: bool.
     """
+
     def __init__(self, *a):
         Output.__init__(self, *a)
-        self.timer = task.LoopingCall(self.tick)
+        self._tick_task = None
 
-        self.inter = float(self.config.get('interval', 1.0))  # tick interval
+        self.inter = float(self.config.get('interval', 1.0))
         self.pressure = int(self.config.get('pressure', -1))
         self.maxsize = int(self.config.get('maxsize', 250000))
         self.expire = self.config.get('expire', False)
         self.allow_nan = self.config.get('allow_nan', True)
-        self.factory = None
-        self.connector = None
+        self.client = None
 
         maxrate = int(self.config.get('maxrate', 0))
-
-        if maxrate > 0:
-            self.queueDepth = int(maxrate * self.inter)
-        else:
-            self.queueDepth = None
+        self.queueDepth = int(maxrate * self.inter) if maxrate > 0 else None
 
         self.tls = self.config.get('tls', False)
-
         if self.tls:
             self.cert = self.config['cert']
             self.key = self.config['key']
 
-    def createClient(self):
-        """Create a TCP connection to Riemann with automatic reconnection
-        """
-
+    async def createClient(self):
+        """Create a TCP connection to Riemann and start the drain loop"""
         server = self.config.get('server', 'localhost')
         port = self.config.get('port', 5555)
         failover = self.config.get('failover', False)
 
-        self.factory = riemann.RiemannClientFactory(server, failover=failover)
-
-        if failover:
-            initial = random.choice(server)
-        else:
-            initial = server
-
-        log.msg('Connecting to Riemann on %s:%s' % (initial, port))
+        self.client = riemann.RiemannTCPClient(server, port, failover=failover)
 
         if self.tls:
-            if SSL:
-                self.connector = reactor.connectSSL(
-                    initial, port, self.factory,
-                    ClientTLSContext(self.key, self.cert)
-                )
-            else:
-                log.msg('[FATAL] SSL support not available!' \
-                    ' Please install PyOpenSSL. Exiting now')
-                reactor.stop()
+            ctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+            ctx.load_cert_chain(certfile=self.cert, keyfile=self.key)
+            self.client._ssl = ctx
         else:
-            self.connector = reactor.connectTCP(initial, port, self.factory)
+            self.client._ssl = None
 
-        de = defer.Deferred()
+        initial = random.choice(self.client.hosts) if failover else server
+        log.info('Connecting to Riemann on %s:%s', initial, port)
 
-        def cb():
-            """Wait until we have a useful proto object
-            """
-            if hasattr(self.factory, 'proto') and self.factory.proto:
-                self.timer.start(self.inter)
-                de.callback(None)
-            else:
-                reactor.callLater(0.01, cb)
+        try:
+            await self.client.connect()
+        except Exception:
+            asyncio.create_task(self.client.reconnect_loop())
 
-        cb()
+        self._tick_task = asyncio.create_task(self._drain_loop())
 
-        return de
+    async def _drain_loop(self):
+        try:
+            while True:
+                await asyncio.sleep(self.inter)
+                await self._tick()
+        except asyncio.CancelledError:
+            pass
 
-    def stop(self):
-        """Stop this client.
-        """
-        self.timer.stop()
-        self.factory.stopTrying()
-        self.connector.disconnect()
-
-    def tick(self):
-        """Clock tick called every self.inter
-        """
-        if self.factory.proto:
-            # Check backpressure
-            if (self.pressure < 0) or (
-                    self.factory.proto.pressure <= self.pressure):
-                self.emptyQueue()
+    async def _tick(self):
+        if self.client and self.client.connected:
+            if (self.pressure < 0) or (self.client.pressure <= self.pressure):
+                await self.emptyQueue()
         elif self.expire:
-            # Check queue age and expire stale events
-            for i, ev in enumerate(self.events):
-                if (time.time() - ev.time) > ev.ttl:
-                    self.events.pop(i)
+            now = time.time()
+            self.events = [ev for ev in self.events
+                           if (now - ev.time) <= ev.ttl]
 
-    def emptyQueue(self):
-        """Remove all or self.queueDepth events from the queue
-        """
-        if self.events:
-            if self.queueDepth and (len(self.events) > self.queueDepth):
-                # Remove maximum of self.queueDepth items from queue
-                events = self.events[:self.queueDepth]
-                self.events = self.events[self.queueDepth:]
-            else:
-                events = self.events
-                self.events = []
+    async def emptyQueue(self):
+        """Drain the event queue to Riemann"""
+        if not self.events:
+            return
 
-            if self.allow_nan:
-                self.factory.proto.sendEvents(events)
-            else:
-                self.factory.proto.sendEvents([ev for ev in events
-                                               if ev.metric is not None])
+        if self.queueDepth and len(self.events) > self.queueDepth:
+            events = self.events[:self.queueDepth]
+            self.events = self.events[self.queueDepth:]
+        else:
+            events = self.events
+            self.events = []
+
+        if not self.allow_nan:
+            events = [ev for ev in events if ev.metric is not None]
+
+        if events:
+            await self.client.sendEvents(events)
+
+    async def stop(self):
+        if self._tick_task:
+            self._tick_task.cancel()
+            try:
+                await self._tick_task
+            except asyncio.CancelledError:
+                pass
+        if self.client:
+            await self.client.disconnect()
 
 
 class RiemannUDP(Output):
@@ -191,28 +149,16 @@ class RiemannUDP(Output):
     def __init__(self, *a):
         Output.__init__(self, *a)
         self.protocol = None
-        self.endpoint = None
 
-    def createClient(self):
+    async def createClient(self):
         """Create a UDP connection to Riemann"""
         server = self.config.get('server', '127.0.0.1')
         port = self.config.get('port', 5555)
 
-        def connect(ip):
-            """Connect to the IP address
-            """
-            self.protocol = riemann.RiemannUDP(ip, port)
-            self.endpoint = reactor.listenUDP(0, self.protocol)
-
-        de = reactor.resolve(server)
-        de.addCallback(connect)
-        return de
+        self.protocol = await riemann.create_riemann_udp(server, port)
+        log.info('Riemann UDP ready for %s:%s', server, port)
 
     def eventsReceived(self, events):
-        """Receives a list of events and transmits them to Riemann
-
-        Arguments:
-        events -- list of `duct.objects.Event`
-        """
+        """Receives a list of events and transmits them to Riemann"""
         if self.protocol:
             self.protocol.sendEvents(events)

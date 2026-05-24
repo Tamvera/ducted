@@ -8,8 +8,6 @@
 
 from zope.interface import implementer
 
-from twisted.internet import defer
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 
@@ -64,20 +62,14 @@ class Apache(Source):
             'workers.idle': int(d.get('IdleWorkers', 0))
         }
 
-    def _get_stats(self):
+    async def _get_stats(self):
         url = self.config.get('url', self.config.get('stats_url'))
-        return HTTPRequest().getBody(url, headers={'User-Agent': ['Duct']})
+        return await HTTPRequest().getBody(url, headers={'User-Agent': 'Duct'})
 
-    @defer.inlineCallbacks
-    def get(self):
-        stats = yield self._get_stats()
+    async def get(self):
+        stats = await self._get_stats()
 
         metrics = self._parse_stats(stats)
 
-        events = []
-
-        for k, v in metrics.items():
-            events.append(self.createEvent('ok', 'Apache %s' % (k), v,
-                                           prefix=k))
-
-        defer.returnValue(events)
+        return [self.createEvent('ok', 'Apache %s' % k, v, prefix=k)
+                for k, v in metrics.items()]

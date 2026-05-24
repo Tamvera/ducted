@@ -6,18 +6,19 @@
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
 
+import asyncio
+import logging
 import time
 
 from zope.interface import implementer
-
-from twisted.internet import defer, reactor
-from twisted.python import log
 
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 from duct.protocol import icmp
 
 from duct.utils import HTTPRequest, Timeout
+
+log = logging.getLogger(__name__)
 
 @implementer(IDuctSource)
 class HTTP(Source):
@@ -41,8 +42,7 @@ class HTTP(Source):
     :(service name).latency: Time to complete request
     """
 
-    @defer.inlineCallbacks
-    def get(self):
+    async def get(self):
 
         method = self.config.get('method', 'GET')
         url = self.config.get('url', 'http://%s/' % self.hostname)
@@ -53,21 +53,21 @@ class HTTP(Source):
         t0 = time.time()
 
         try:
-            body = yield HTTPRequest(timeout).getBody(url, method,
-                                                      {'User-Agent': [ua]})
+            body = await HTTPRequest(timeout).getBody(url, method,
+                                                      {'User-Agent': ua})
         except Timeout:
-            log.msg('[%s] Request timeout' % url)
+            log.warning('[%s] Request timeout', url)
             t_delta = (time.time() - t0) * 1000
-            defer.returnValue(self.createEvent('critical',
-                                               '%s - timeout' % url, t_delta,
-                                               prefix="latency"))
+            return self.createEvent('critical',
+                                    '%s - timeout' % url, t_delta,
+                                    prefix="latency")
         except Exception as e:
-            log.msg('[%s] Request error %s' % (url, e))
+            log.warning('[%s] Request error %s', url, e)
             t_delta = (time.time() - t0) * 1000
-            defer.returnValue(self.createEvent('critical',
-                                               '%s - %s' % (url, e),
-                                               t_delta,
-                                               prefix="latency"))
+            return self.createEvent('critical',
+                                    '%s - %s' % (url, e),
+                                    t_delta,
+                                    prefix="latency")
 
         t_delta = (time.time() - t0) * 1000
 
@@ -79,8 +79,8 @@ class HTTP(Source):
         else:
             state = 'ok'
 
-        defer.returnValue(self.createEvent(state, 'Latency to %s' % url,
-                                           t_delta, prefix="latency"))
+        return self.createEvent(state, 'Latency to %s' % url,
+                                t_delta, prefix="latency")
 
 @implementer(IDuctSource)
 class Ping(Source):
@@ -100,19 +100,20 @@ class Ping(Source):
     metrics from that host.
     """
 
-    @defer.inlineCallbacks
-    def get(self):
+    async def get(self):
         host = self.config.get('destination', self.hostname)
 
         try:
-            ip = yield reactor.resolve(host)
-        except:
+            loop = asyncio.get_event_loop()
+            infos = await loop.getaddrinfo(host, None)
+            ip = infos[0][4][0] if infos else None
+        except Exception:
             ip = None
 
         if ip:
             try:
-                loss, latency = yield icmp.ping(ip, 5)
-            except:
+                loss, latency = await icmp.ping(ip, 5)
+            except Exception:
                 loss, latency = 100, None
 
             event = [self.createEvent('ok', '%s%% loss to %s' % (loss, host),
@@ -125,4 +126,4 @@ class Ping(Source):
             event = [self.createEvent('critical', 'Unable to resolve %s' % host,
                                       100, prefix="loss")]
 
-        defer.returnValue(event)
+        return event

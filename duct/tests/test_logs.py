@@ -1,18 +1,16 @@
-from twisted.trial import unittest
+import datetime
+import os
+import pytest
 
 from duct.logs import follower, parsers
 
-import datetime
-import os
 
-
-class TestLogs(unittest.TestCase):
- 
+class TestLogs:
     def test_logfollow(self):
         try:
             os.unlink('test.log.lf')
             os.unlink('test.log')
-        except:
+        except Exception:
             pass
 
         log = open('test.log', 'wt')
@@ -33,11 +31,11 @@ class TestLogs(unittest.TestCase):
 
         r3 = f.get()
 
-        self.assertEqual(r[0], 'foo')
-        self.assertEqual(r[1], 'bar')
+        assert r[0] == 'foo'
+        assert r[1] == 'bar'
 
-        self.assertEqual(r2, [])
-        self.assertEqual(r3[0], 'testing')
+        assert r2 == []
+        assert r3[0] == 'testing'
 
         log.close()
 
@@ -50,8 +48,8 @@ class TestLogs(unittest.TestCase):
 
         r = f.get()
 
-        self.assertEqual(r[0], 'foo2')
-        self.assertEqual(r[1], 'bar2')
+        assert r[0] == 'foo2'
+        assert r[1] == 'bar2'
 
         # Go backwards
         log = open('test.log', 'wt')
@@ -60,7 +58,7 @@ class TestLogs(unittest.TestCase):
 
         r = f.get()
 
-        self.assertEqual(r[0], 'foo3')
+        assert r[0] == 'foo3'
 
         os.unlink('test.log')
         os.unlink('testold.log')
@@ -84,5 +82,5 @@ class TestLogs(unittest.TestCase):
 
         p = log.parse(line)
 
-        for k,v in want.items():
-            self.assertEquals(p[k], v)
+        for k, v in want.items():
+            assert p[k] == v

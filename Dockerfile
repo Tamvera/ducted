@@ -1,24 +1,17 @@
-FROM python:2.7.15-slim-stretch
+FROM python:3.12-trixie
 
 WORKDIR /duct
 
 RUN apt-get update
 RUN apt-get -y upgrade
-RUN apt-get -y install build-essential python-cryptography python-twisted python-protobuf python-yaml python-openssl
 
 RUN mkdir -p /duct/conf.d
 
 ADD duct duct
-ADD twisted twisted
-ADD requirements.txt .
-ADD setup.py .
-ADD docker/duct.yml .
+ADD pyproject.toml .
+ADD docker/duct.yml.example duct.yml
 
 RUN pip install -e .
-
-RUN apt-get -y purge build-essential
-RUN apt-get -y autoremove
-RUN apt-get clean
 
 USER 65534
 

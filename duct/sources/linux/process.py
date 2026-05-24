@@ -9,8 +9,6 @@ import re
 
 from zope.interface import implementer
 
-from twisted.internet import defer
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 
@@ -26,15 +24,12 @@ class ProcessCount(Source):
 
     ssh = True
 
-    @defer.inlineCallbacks
-    def get(self):
-        out, _err, _code = yield self.fork('/bin/ps', args=('-e',))
+    async def get(self):
+        out, _err, _code = await self.fork('/bin/ps', args=('-e',))
 
         count = len(out.strip('\n').split('\n')) - 1
 
-        defer.returnValue(
-            self.createEvent('ok', 'Process count %s' % (count), count)
-        )
+        return self.createEvent('ok', 'Process count %s' % (count), count)
 
 @implementer(IDuctSource)
 class ProcessStats(Source):
@@ -51,9 +46,8 @@ class ProcessStats(Source):
 
     ssh = True
 
-    @defer.inlineCallbacks
-    def get(self):
-        out, _err, _code = yield self.fork(
+    async def get(self):
+        out, _err, _code = await self.fork(
             '/bin/ps',
             args=('-eo', 'pid,user:50,etime,rss,pcpu,comm:50,cmd:255',)
         )
@@ -153,4 +147,4 @@ class ProcessStats(Source):
                 )
             )
 
-        defer.returnValue(events)
+        return events

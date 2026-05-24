@@ -13,8 +13,6 @@ import datetime
 
 from zope.interface import implementer
 
-from twisted.internet import defer
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 
@@ -62,12 +60,11 @@ class Nginx(Source):
 
         return metrics
 
-    @defer.inlineCallbacks
-    def get(self):
+    async def get(self):
         url = self.config.get('url', self.config.get('stats_url'))
 
-        body = yield HTTPRequest().getBody(
-            url, headers={'User-Agent': ['Duct']}
+        body = await HTTPRequest().getBody(
+            url, headers={'User-Agent': 'Duct'}
         )
 
         events = []
@@ -80,7 +77,7 @@ class Nginx(Source):
                 events.append(self.createEvent('ok', 'Nginx %s' % (k), metric,
                                                prefix=k, aggregation=aggr))
 
-        defer.returnValue(events)
+        return events
 
 @implementer(IDuctSource)
 class NginxLogMetrics(Source):

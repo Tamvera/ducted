@@ -5,27 +5,23 @@
 
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
+import struct
+import asyncio
+import logging
+
 from duct.ihateprotobuf import proto_pb2
 from duct.interfaces import IDuctProtocol
 
 from zope.interface import implementer
 
-from twisted.protocols.basic import Int32StringReceiver
-from twisted.internet.protocol import DatagramProtocol
-from twisted.internet import protocol
-from twisted.python import log
+log = logging.getLogger(__name__)
 
 
 class RiemannProtobufMixin(object):
-    """Class mix-in for protocol buffer stuff
-    """
-    def __init__(self):
-        self.pressure = 0
+    """Class mix-in for protocol buffer encoding/decoding"""
 
     def encodeEvent(self, event):
-        """Adapts an Event object to a Riemann protobuf event Event"""
-        # pylint: disable=no-member
-
+        """Adapt an Event object to a Riemann protobuf Event"""
         pbevent = proto_pb2.Event(
             time=int(event.time),
             state=event.state,
@@ -37,7 +33,6 @@ class RiemannProtobufMixin(object):
         )
 
         if event.metric is not None:
-            # I have no idea what I'm doing
             if isinstance(event.metric, int):
                 pbevent.metric_sint64 = event.metric
                 pbevent.metric_f = float(event.metric)
@@ -53,101 +48,173 @@ class RiemannProtobufMixin(object):
         return pbevent
 
     def encodeMessage(self, events):
-        """Encode a list of Duct events with protobuf"""
-
+        """Encode a list of Duct events as a protobuf message"""
         encoded = [self.encodeEvent(ev) for ev in events
                    if ev.evtype == 'metric']
-
         return proto_pb2.Msg(events=encoded).SerializeToString()
 
     def decodeMessage(self, data):
-        """Decode a protobuf message into a list of Duct events"""
+        """Decode a protobuf message"""
         message = proto_pb2.Msg()
         message.ParseFromString(data)
-
         return message
 
-    def sendEvents(self, events):
-        """Send a Duct Event to Riemann"""
-        self.pressure += 1
-        self.sendString(self.encodeMessage(events))
+
+async def _write_framed(writer, data):
+    """Write a 32-bit big-endian length-prefixed message"""
+    writer.write(struct.pack('!I', len(data)) + data)
+    await writer.drain()
+
+
+async def _read_framed(reader):
+    """Read a 32-bit big-endian length-prefixed message"""
+    length_bytes = await reader.readexactly(4)
+    length = struct.unpack('!I', length_bytes)[0]
+    return await reader.readexactly(length)
+
 
 @implementer(IDuctProtocol)
-class RiemannProtocol(Int32StringReceiver, RiemannProtobufMixin):
-    """Riemann protobuf protocol
+class RiemannTCPClient(RiemannProtobufMixin):
+    """Asyncio TCP Riemann client with automatic reconnection.
+
+    :param host: Riemann server hostname or list of hostnames for failover
+    :param port: Riemann server port
+    :param failover: Enable round-robin failover across host list
     """
 
-    def stringReceived(self, string):
-        self.pressure -= 1
-
-class RiemannClientFactory(protocol.ReconnectingClientFactory):
-    """A reconnecting client factory which creates RiemannProtocol instances
-    """
-    maxDelay = 30
-    initialDelay = 5
-    factor = 2
-    jitter = 0
-
-    def __init__(self, hosts, failover=False):
+    def __init__(self, host, port, failover=False):
+        self.port = port
         self.failover = failover
-        self.proto = None
 
-        if self.failover:
-            if isinstance(hosts, list):
-                self.hosts = hosts
-            else:
-                self.hosts = [hosts]
+        if failover and isinstance(host, list):
+            self.hosts = host
+        else:
+            self.hosts = [host] if isinstance(host, list) else [host]
 
         self.host_index = 0
+        self.reader = None
+        self.writer = None
+        self.pressure = 0
+        self._connect_lock = asyncio.Lock()
+        self._reconnect_task = None
 
-    def buildProtocol(self, addr):
-        self.resetDelay()
-        self.proto = RiemannProtocol()
-        return self.proto
+    @property
+    def current_host(self):
+        return self.hosts[self.host_index]
 
-    def _do_failover(self, connector):
-        if self.failover:
-            if self.host_index >= (len(self.hosts)-1):
-                self.host_index = 0
-            else:
-                self.host_index += 1
+    def _next_host(self):
+        if self.failover and len(self.hosts) > 1:
+            self.host_index = (self.host_index + 1) % len(self.hosts)
 
-            connector.host = self.hosts[self.host_index]
+    @property
+    def connected(self):
+        return self.writer is not None and not self.writer.is_closing()
 
-    def clientConnectionLost(self, connector, reason):
-        log.msg('Lost connection.  Reason:' + str(reason))
-        self.proto = None
+    async def connect(self):
+        """Establish TCP connection to the current host"""
+        async with self._connect_lock:
+            if self.connected:
+                return
+            host = self.current_host
+            log.info('Connecting to Riemann on %s:%s', host, self.port)
+            try:
+                self.reader, self.writer = await asyncio.open_connection(
+                    host, self.port
+                )
+                log.info('Connected to Riemann on %s:%s', host, self.port)
+            except (ConnectionRefusedError, OSError) as e:
+                log.warning('Failed to connect to Riemann %s:%s — %s',
+                            host, self.port, e)
+                self._next_host()
+                self.reader = self.writer = None
+                raise
 
-        self._do_failover(connector)
+    async def disconnect(self):
+        """Close the connection"""
+        async with self._connect_lock:
+            if self.writer:
+                self.writer.close()
+                try:
+                    await self.writer.wait_closed()
+                except Exception:
+                    pass
+                self.reader = self.writer = None
 
-        log.msg('Reconnecting to Riemann on %s:%s' % (connector.host,
-                                                      connector.port))
-        protocol.ReconnectingClientFactory.clientConnectionLost(
-            self, connector, reason)
+    async def reconnect_loop(self, delay=5.0, max_delay=30.0):
+        """Keep trying to reconnect with exponential backoff"""
+        current_delay = delay
+        while True:
+            try:
+                await self.connect()
+                current_delay = delay
+                return
+            except Exception:
+                log.info('Reconnecting in %ss…', current_delay)
+                await asyncio.sleep(current_delay)
+                current_delay = min(current_delay * 2, max_delay)
 
-    def clientConnectionFailed(self, connector, reason):
-        log.msg('Connection failed. Reason:' + str(reason))
-        self.proto = None
+    async def sendEvents(self, events):
+        """Send a list of Duct events to Riemann. Fire-and-forget on error."""
+        if not self.connected:
+            return
 
-        self._do_failover(connector)
+        data = self.encodeMessage(events)
+        try:
+            self.pressure += 1
+            await _write_framed(self.writer, data)
+            response_data = await _read_framed(self.reader)
+            msg = proto_pb2.Msg()
+            msg.ParseFromString(response_data)
+            self.pressure -= 1
+            return msg
+        except Exception as e:
+            log.warning('Riemann send error: %s — reconnecting', e)
+            self.pressure -= 1
+            await self.disconnect()
+            asyncio.create_task(self.reconnect_loop())
 
-        log.msg('Reconnecting to Riemann on %s:%s' % (connector.host,
-                                                      connector.port))
-        protocol.ReconnectingClientFactory.clientConnectionFailed(
-            self, connector, reason)
 
 @implementer(IDuctProtocol)
-class RiemannUDP(DatagramProtocol, RiemannProtobufMixin):
-    """UDP datagram protocol for Riemann
-    """
+class RiemannUDPProtocol(RiemannProtobufMixin, asyncio.DatagramProtocol):
+    """Asyncio UDP datagram protocol for Riemann"""
 
-    def __init__(self, host, port):
-        RiemannProtobufMixin.__init__(self)
+    def __init__(self, host, port, on_ready=None):
         self.host = host
         self.port = port
+        self.transport = None
+        self._on_ready = on_ready
+        self.pressure = 0
 
-    def sendString(self, string):
-        """Write a string to the transport
-        """
-        self.transport.write(string, (self.host, self.port))
-        self.pressure -= 1
+    def connection_made(self, transport):
+        self.transport = transport
+        if self._on_ready:
+            self._on_ready(self)
+
+    def error_received(self, exc):
+        log.warning('RiemannUDP error: %s', exc)
+
+    def connection_lost(self, exc):
+        self.transport = None
+
+    def sendEvents(self, events):
+        """Send events as a UDP datagram (best-effort)"""
+        if not self.transport:
+            return
+        data = self.encodeMessage(events)
+        self.transport.sendto(data, (self.host, self.port))
+        self.pressure += 1
+
+
+async def create_riemann_udp(host, port):
+    """Create and return a RiemannUDPProtocol bound to an ephemeral port"""
+    loop = asyncio.get_event_loop()
+    ready = loop.create_future()
+
+    def on_ready(proto):
+        ready.set_result(proto)
+
+    transport, protocol = await loop.create_datagram_endpoint(
+        lambda: RiemannUDPProtocol(host, port, on_ready=on_ready),
+        family=asyncio.socket.AF_INET,
+    )
+    return await ready

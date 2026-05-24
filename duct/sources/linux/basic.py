@@ -7,8 +7,6 @@
 """
 from zope.interface import implementer
 
-from twisted.internet import defer
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 from duct.aggregators import Counter64
@@ -31,12 +29,11 @@ class LoadAverage(Source):
     def get(self):
         return self._parse_loadaverage(open('/proc/loadavg', 'rt').read())
 
-    @defer.inlineCallbacks
-    def sshGet(self):
-        loadavg, err, code = yield self.fork('/bin/cat /proc/loadavg')
+    async def sshGet(self):
+        loadavg, err, code = await self.fork('/bin/cat /proc/loadavg')
 
         if code == 0:
-            defer.returnValue(self._parse_loadaverage(loadavg))
+            return self._parse_loadaverage(loadavg)
         else:
             raise Exception(err)
 
@@ -152,14 +149,12 @@ class DiskIO(Source):
 
         return events
 
-    @defer.inlineCallbacks
-    def sshGet(self):
-        diskstats, err, code = yield self.fork('/bin/cat /proc/diskstats')
+    async def sshGet(self):
+        diskstats, err, code = await self.fork('/bin/cat /proc/diskstats')
 
         if code == 0:
             stats = diskstats.strip('\n').split('\n')
-            defer.returnValue(
-                self._parse_stats(stats))
+            return self._parse_stats(stats)
         else:
             raise Exception(err)
 
@@ -257,9 +252,8 @@ class CPU(Source):
             return events
         return None
 
-    @defer.inlineCallbacks
-    def sshGet(self):
-        procstat, err, code = yield self.fork('cat /proc/stat')
+    async def sshGet(self):
+        procstat, err, code = await self.fork('cat /proc/stat')
         if code == 0:
             metrics = []
             stat = procstat.strip('\n').split('\n')
@@ -274,7 +268,7 @@ class CPU(Source):
                 if stats:
                     metrics.extend(self._transpose_metrics(stats, prefix))
 
-            defer.returnValue(metrics or None)
+            return metrics or None
         else:
             raise Exception(err)
 
@@ -326,12 +320,11 @@ class Memory(Source):
         mem = open('/proc/meminfo')
         return self._parse_stats(mem)
 
-    @defer.inlineCallbacks
-    def sshGet(self):
-        mem, err, code = yield self.fork('/bin/cat /proc/meminfo')
+    async def sshGet(self):
+        mem, err, code = await self.fork('/bin/cat /proc/meminfo')
 
         if code == 0:
-            defer.returnValue(self._parse_stats(mem.strip('\n').split('\n')))
+            return self._parse_stats(mem.strip('\n').split('\n'))
         else:
             raise Exception(err)
 
@@ -354,11 +347,10 @@ class DiskFree(Source):
 
     ssh = True
 
-    @defer.inlineCallbacks
-    def get(self):
+    async def get(self):
         disks = self.config.get('disks')
 
-        out, _, _ = yield self.fork('/bin/df', args=('-lPx', 'tmpfs',))
+        out, _, _ = await self.fork('/bin/df', args=('-lPx', 'tmpfs',))
 
         out = [i.split() for i in out.strip('\n').split('\n')[1:]]
 
@@ -373,15 +365,15 @@ class DiskFree(Source):
                 used = int(used)
                 free = int(free)
                 events.extend([
-                    self.createEvent('ok', 'Disk percent used %s%%' % (util),
+                    self.createEvent('ok', 'Disk percent used %s%%' % util,
                                      util, prefix="%s.used" % disk),
-                    self.createEvent('ok', 'Disk bytes used %s kB' % (used),
+                    self.createEvent('ok', 'Disk bytes used %s kB' % used,
                                      used, prefix="%s.bytes" % disk),
-                    self.createEvent('ok', 'Disk free %s kB' % (free),
+                    self.createEvent('ok', 'Disk free %s kB' % free,
                                      free, prefix="%s.free" % disk)
                 ])
 
-        defer.returnValue(events)
+        return events
 
 @implementer(IDuctSource)
 class Network(Source):
@@ -454,13 +446,11 @@ class Network(Source):
 
         return proc_dev.strip('\n').split('\n')[2:]
 
-    @defer.inlineCallbacks
-    def sshGet(self):
-        net, err, code = yield self.fork('/bin/cat /proc/net/dev')
+    async def sshGet(self):
+        net, err, code = await self.fork('/bin/cat /proc/net/dev')
 
         if code == 0:
-            defer.returnValue(self._parse_stats(
-                net.strip('\n').split('\n')[2:]))
+            return self._parse_stats(net.strip('\n').split('\n')[2:])
         else:
             raise Exception(err)
 

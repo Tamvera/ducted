@@ -8,8 +8,6 @@
 
 from zope.interface import implementer
 
-from twisted.internet import defer
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 from duct.aggregators import Counter64
@@ -49,10 +47,9 @@ class ElasticSearch(Source):
 
         self.client = elasticsearch.ElasticSearch(self.url, user, passwd)
 
-    @defer.inlineCallbacks
-    def get(self):
-        stats = yield self.client.stats()
-        node_stats = yield self.client.node_stats()
+    async def get(self):
+        stats = await self.client.stats()
+        node_stats = await self.client.node_stats()
 
         status = {'green': 2, 'yellow': 1, 'red': 0}[stats['status']]
 
@@ -103,4 +100,4 @@ class ElasticSearch(Source):
                     aggregation=Counter64
                 ))
 
-        defer.returnValue(events)
+        return events

@@ -1,77 +1,59 @@
 import json
-
-from twisted.trial import unittest
-from twisted.internet import defer
+import pytest
+import pytest_asyncio
 
 from duct.outputs import elasticsearch, opentsdb
 from duct.objects import Event
 from duct.service import DuctService
 
-class ManualLooper(object):
-    def __init__(self, task):
-        self.task = task
-        self.running = None
 
-    def start(self, time):
-        self.running = True
+@pytest.fixture
+def service():
+    return DuctService({})
 
-    def stop(self):
-        self.running = False
 
-    def tick(self):
-        if not(self.running):
-            raise Exception("Timer isn't running")
+@pytest.fixture
+def event():
+    return Event('ok', 'sky', 'Sky has not fallen', 1.0, 60.0,
+                 attributes={"chicken": "little"})
 
-        return defer.maybeDeferred(self.task)
 
-class Tests(unittest.TestCase):
-    def setUp(self):
-        self.service = DuctService({})
-        self.event = Event('ok', 'sky', 'Sky has not fallen', 1.0, 60.0,
-                           attributes={"chicken": "little"})
+class TestOutputs:
+    @pytest.mark.asyncio
+    async def test_elasticsearch_output(self, service, event):
+        last_request = {}
 
-    def _fake_request(self, result, *a, **kw):
-        self.last_request = (a, kw)
-        return result
+        async def _fake_request(path, data=None, method='GET'):
+            last_request['args'] = (path, data, method)
+            return {"errors": []}
 
-    def _bootstrap_output(self, outputClass, options={}):
-        out = outputClass(options, self.service)
-        out.timer = ManualLooper(out.tick)
-        out.createClient()
+        out = elasticsearch.ElasticSearch({}, service)
+        await out.createClient()
+        out.client._request = _fake_request
 
-        return out
+        out.eventsReceived([event])
+        await out._tick()
 
-    @defer.inlineCallbacks
-    def test_elasticsearch_output(self):
-        def _wrap_request(*a, **kw):
-            return defer.maybeDeferred(self._fake_request, {"errors":[]}, *a, **kw)
+        meta, metric = last_request['args'][1].strip('\n').split('\n')
+        request_data = json.loads(metric)
 
-        out = self._bootstrap_output(elasticsearch.ElasticSearch)
+        assert request_data['service'] == 'sky'
 
-        out.client._request = _wrap_request
+    @pytest.mark.asyncio
+    async def test_opentsdb_output(self, service, event):
+        last_request = {}
 
-        out.eventsReceived([self.event])
+        async def _fake_request(path, data=None, method='GET'):
+            last_request['args'] = (path, data, method)
+            return {"errors": []}
 
-        yield out.timer.tick()
+        out = opentsdb.OpenTSDB({}, service)
+        await out.createClient()
+        out.client._request = _fake_request
 
-        meta, metric = self.last_request[0][1].strip('\n').split('\n')
-        requestData = json.loads(metric)
+        out.eventsReceived([event])
+        await out._tick()
 
-        self.assertEqual(requestData['service'], 'sky')
+        request_data = json.loads(last_request['args'][1])[0]
 
-    @defer.inlineCallbacks
-    def test_opentsdb_output(self):
-        def _wrap_request(*a, **kw):
-            return defer.maybeDeferred(self._fake_request, {"errors":[]}, *a, **kw)
-
-        out = self._bootstrap_output(opentsdb.OpenTSDB)
-
-        out.client._request = _wrap_request
-        
-        out.eventsReceived([self.event])
-
-        yield out.timer.tick()
-        
-        requestData = json.loads(self.last_request[0][1])[0]
-
-        self.assertEqual(requestData['metric'], 'sky')
+        assert request_data['metric'] == 'sky'

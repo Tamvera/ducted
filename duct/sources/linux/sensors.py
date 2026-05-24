@@ -9,8 +9,6 @@ import os
 
 from zope.interface import implementer
 
-from twisted.internet import defer
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 
@@ -106,13 +104,12 @@ class LMSensors(Source):
     """
     ssh = True
 
-    @defer.inlineCallbacks
-    def _get_sensors(self):
-        out, _err, code = yield self.fork('/usr/bin/sensors')
+    async def _get_sensors(self):
+        out, _err, code = await self.fork('/usr/bin/sensors')
         if code == 0:
-            defer.returnValue(out.strip('\n').split('\n'))
+            return out.strip('\n').split('\n')
         else:
-            defer.returnValue([])
+            return []
 
     def _parse_sensors(self, sensors):
         adapters = {}
@@ -146,9 +143,8 @@ class LMSensors(Source):
 
         return adapters
 
-    @defer.inlineCallbacks
-    def get(self):
-        sensors = yield self._get_sensors()
+    async def get(self):
+        sensors = await self._get_sensors()
         adapters = self._parse_sensors(sensors)
 
         events = []
@@ -162,7 +158,7 @@ class LMSensors(Source):
                                      val,
                                      prefix='%s.%s' % (adapter, sensor,)))
 
-        defer.returnValue(events)
+        return events
 
 @implementer(IDuctSource)
 class SMART(Source):
@@ -180,13 +176,12 @@ class SMART(Source):
 
         self.devices = []
 
-    @defer.inlineCallbacks
-    def _get_disks(self):
-        out, _err, code = yield self.fork('/usr/sbin/smartctl',
+    async def _get_disks(self):
+        out, _err, code = await self.fork('/usr/sbin/smartctl',
                                           args=('--scan',))
 
         if code != 0:
-            defer.returnValue([])
+            return []
 
         out = out.strip('\n').split('\n')
         devices = []
@@ -194,17 +189,16 @@ class SMART(Source):
             if '/dev' in ln:
                 devices.append(ln.split()[0])
 
-        defer.returnValue(devices)
+        return devices
 
-    @defer.inlineCallbacks
-    def _get_smart(self, device):
-        out, _err, code = yield self.fork('/usr/sbin/smartctl',
+    async def _get_smart(self, device):
+        out, _err, code = await self.fork('/usr/sbin/smartctl',
                                           args=('-A', device))
 
         if code == 0:
-            defer.returnValue(out.strip('\n').split('\n'))
+            return out.strip('\n').split('\n')
         else:
-            defer.returnValue([])
+            return []
 
     def _parse_smart(self, smart):
         mark = False
@@ -229,15 +223,14 @@ class SMART(Source):
 
         return attributes
 
-    @defer.inlineCallbacks
-    def get(self):
+    async def get(self):
         if not self.devices:
-            self.devices = yield self._get_disks()
+            self.devices = await self._get_disks()
 
         events = []
 
         for disk in self.devices:
-            smart = yield self._get_smart(disk)
+            smart = await self._get_smart(disk)
             stats = self._parse_smart(smart)
 
             for sensor, val in stats.items():
@@ -249,4 +242,4 @@ class SMART(Source):
                                      prefix='%s.%s' % (disk, sensor,))
                 )
 
-        defer.returnValue(events)
+        return events

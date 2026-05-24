@@ -10,8 +10,6 @@ from base64 import b64encode
 
 from zope.interface import implementer
 
-from twisted.internet import defer
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 
@@ -54,49 +52,42 @@ class HAProxy(Source):
             return self.createEvent('ok', '%s: %s' % (desc, val), val,
                                     prefix=pref, aggregation=aggr)
 
-    def _get_stats(self):
-        authorization = b64encode('%s:%s' % (self.user, self.password))
-        return HTTPRequest().getBody(
-            self.url,
-            headers={
-                'User-Agent': ['Duct'],
-                'Authorization': ['Basic ' + authorization]
-            }
-        )
-
-    @defer.inlineCallbacks
-    def get(self):
+    async def get(self):
         events = []
 
-        try:
-            stats = yield self._get_stats()
-            stats = stats.lstrip('# ').split('\n')
+        authorization = b64encode(
+            ('%s:%s' % (self.user, self.password)).encode()
+        ).decode()
 
+        try:
+            stats = await HTTPRequest().getBody(
+                self.url,
+                headers={
+                    'User-Agent': 'Duct',
+                    'Authorization': 'Basic ' + authorization,
+                }
+            )
+            stats = stats.lstrip('# ').split('\n')
             events.append(self.createEvent('ok', 'Connection ok', 1,
                                            prefix='state'))
         except Exception as e:
-            defer.returnValue(self.createEvent(
-                'critical', 'Connection failed: %s' % (str(e)), 0,
-                prefix='state'))
+            return self.createEvent(
+                'critical', 'Connection failed: %s' % str(e), 0,
+                prefix='state')
 
         c = csv.DictReader(stats, delimiter=',')
         for row in c:
             if row['svname'] == 'BACKEND':
                 p = 'backends.%s' % row['pxname']
-
                 events.append(self._ev(row['act'], 'Active servers',
                                        '%s.active' % p))
-
             elif row['svname'] == 'FRONTEND':
                 p = 'frontends.%s' % row['pxname']
-
             else:
                 p = 'nodes.%s' % row['pxname']
-
                 events.append(self._ev(row['chkfail'], 'Check failures',
                                        '%s.checks_failed' % p))
 
-            # Sessions
             events.extend([
                 self._ev(row['scur'], 'Sessions', '%s.sessions' % p, False),
                 self._ev(row['stot'], 'Session rate', '%s.session_rate' % p),
@@ -115,4 +106,4 @@ class HAProxy(Source):
                 self._ev(row['hrsp_5xx'], '5xx codes', '%s.code_5xx' % p),
             ])
 
-        defer.returnValue([e for e in events if e])
+        return [e for e in events if e]

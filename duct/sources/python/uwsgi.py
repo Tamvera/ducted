@@ -6,42 +6,13 @@
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
 
+import asyncio
 import json
-
-try:
-    from StringIO import StringIO
-except ImportError:
-    from io import StringIO
 
 from zope.interface import implementer
 
-from twisted.internet import defer, reactor
-from twisted.internet.protocol import ClientCreator, Protocol
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
-
-class JSONProtocol(Protocol):
-    """
-    JSON line protocol
-    """
-    delimiter = '\n'
-    def __init__(self):
-        self.ready = False
-        self.buf = StringIO()
-        self.d = defer.Deferred()
-
-    def dataReceived(self, data):
-        self.buf.write(data)
-
-    def connectionLost(self, *_a):
-        self.buf.seek(0)
-        self.d.callback(json.load(self.buf))
-
-    def disconnect(self):
-        """Disconnect transport
-        """
-        return self.transport.loseConnection()
 
 
 @implementer(IDuctSource)
@@ -57,16 +28,26 @@ class Emperor(Source):
 
     """
 
-    @defer.inlineCallbacks
-    def get(self):
+    async def get(self):
         host = self.config.get('host', 'localhost')
         port = int(self.config.get('port', 6001))
 
-        proto = yield ClientCreator(
-            reactor, JSONProtocol).connectTCP(host, port)
+        reader, writer = await asyncio.open_connection(host, port)
+        buf = b''
+        try:
+            while True:
+                chunk = await reader.read(4096)
+                if not chunk:
+                    break
+                buf += chunk
+        finally:
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except Exception:
+                pass
 
-        stats = yield proto.d
-
+        stats = json.loads(buf.decode())
         nodes = stats.get('vassals', [])
 
         events = []
@@ -89,7 +70,6 @@ class Emperor(Source):
                                  prefix=node['id'] + '.respawns'),
             ])
 
-
         events.extend([
             self.createEvent('ok', 'active', active, prefix='total.active'),
             self.createEvent('ok', 'accepting', accepting,
@@ -98,4 +78,4 @@ class Emperor(Source):
                              prefix='total.respawns'),
         ])
 
-        defer.returnValue(events)
+        return events

@@ -1,6 +1,7 @@
-from twisted.trial import unittest
+import pytest
 
 from duct.sources.linux import basic
+
 
 testKey = """-----BEGIN RSA PRIVATE KEY-----
 Proc-Type: 4,ENCRYPTED
@@ -36,9 +37,10 @@ ZefHS5wV1KNZBK+vh08HvX/AY9WBHPH+DEbrpymn/9oAKVmhH+f73ADqVOanMPk0
 
 testKeyPassword = "testtest"
 
-class FakeDuct(object):
+
+class FakeDuct:
     config = {
-        'ssh_username': 'test', 
+        'ssh_username': 'test',
         'ssh_key': testKey,
         'ssh_keypass': testKeyPassword,
     }
@@ -46,25 +48,24 @@ class FakeDuct(object):
     ttl = 60.0
     hostConnectorCache = {}
 
-class Tests(unittest.TestCase):
+
+class TestSSH:
     def _qb(self, result):
         pass
 
     def test_ssh_source_setup(self):
-        s = basic.LoadAverage({
-                'service': 'mem',
-                'use_ssh': True,
-           }, self._qb, FakeDuct())
+        basic.LoadAverage({
+            'service': 'mem',
+            'use_ssh': True,
+        }, self._qb, FakeDuct())
 
     def test_ssh_add_keyfile(self):
         with open('temp_key', 'wt') as f:
             f.write(testKey)
 
-        s = basic.LoadAverage({
-                'service': 'mem',
-                'use_ssh': True,
-                'ssh_keyfile': 'temp_key',
-                'ssh_key': None,
-           }, self._qb, FakeDuct())
-
-
+        basic.LoadAverage({
+            'service': 'mem',
+            'use_ssh': True,
+            'ssh_keyfile': 'temp_key',
+            'ssh_key': None,
+        }, self._qb, FakeDuct())
