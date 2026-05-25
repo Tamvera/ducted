@@ -7,8 +7,6 @@
 """
 from zope.interface import implementer
 
-from twisted.internet import defer
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 
@@ -48,8 +46,7 @@ class ContainerStats(Source):
 
         self.cache = PersistentCache(location='/tmp/dockerstats.cache')
 
-    @defer.inlineCallbacks
-    def _get_stats_from_node(self):
+    async def _get_stats_from_node(self):
         if self.url.startswith('unix:'):
             sock = self.url
             pref = ''
@@ -57,29 +54,28 @@ class ContainerStats(Source):
             sock = None
             pref = self.url
 
-        containers = yield HTTPRequest().getJson(
-            '%s/containers/json' % pref, socket=sock)
+        containers = await HTTPRequest().getJson(
+            f'{pref}/containers/json', socket=sock)
 
         allStats = {}
 
         for container in containers:
-            name = container.get('Names', [None])[0].lstrip('/').encode('ascii')
+            name = container.get('Names', [None])[0].lstrip('/')
 
-            stats = yield HTTPRequest().getJson(
-                '%s/containers/%s/stats?stream=false' % (pref, name),
+            stats = await HTTPRequest().getJson(
+                f'{pref}/containers/{name}/stats?stream=false',
                 socket=sock
             )
 
-            detail = yield HTTPRequest().getJson(
-                '%s/containers/%s/json' % (pref, name), socket=sock)
+            detail = await HTTPRequest().getJson(
+                f'{pref}/containers/{name}/json', socket=sock)
 
             env = detail['Config']['Env']
-
 
             if env:
                 for var in env:
                     if var.startswith('MARATHON_APP_ID='):
-                        name = var.split('=', 1)[-1].lstrip('/').encode('ascii')
+                        name = var.split('=', 1)[-1].lstrip('/')
 
             allStats[name] = {
                 'mem_limit': stats['memory_stats']['limit'],
@@ -100,17 +96,14 @@ class ContainerStats(Source):
                 dockDelta = dockCpu - lastStats[1]
 
                 if sysDelta > 0:
-                    usage = int((dockDelta / sysDelta) * 100)
-
-                    allStats[name]['cpu'] = usage
+                    allStats[name]['cpu'] = int((dockDelta / sysDelta) * 100)
 
             self.cache.set(name, [sysCpu, dockCpu])
 
-        defer.returnValue(allStats)
+        return allStats
 
-    @defer.inlineCallbacks
-    def get(self):
-        stats = yield self._get_stats_from_node()
+    async def get(self):
+        stats = await self._get_stats_from_node()
 
         events = []
         for name, container in stats.items():
@@ -118,11 +111,11 @@ class ContainerStats(Source):
                 if pref.startswith('io_'):
                     events.append(self.createEvent(
                         'ok', '', val,
-                        prefix='%s.%s' % (name, pref),
+                        prefix=f'{name}.{pref}',
                         aggregation=Counter64
                     ))
                 else:
                     events.append(self.createEvent(
-                        'ok', '', val, prefix='%s.%s' % (name, pref)))
+                        'ok', '', val, prefix=f'{name}.{pref}'))
 
-        defer.returnValue(events)
+        return events

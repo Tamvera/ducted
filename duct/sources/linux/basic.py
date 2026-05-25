@@ -7,8 +7,6 @@
 """
 from zope.interface import implementer
 
-from twisted.internet import defer
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 from duct.aggregators import Counter64
@@ -28,17 +26,17 @@ class LoadAverage(Source):
 
         return self.createEvent('ok', 'Load average', float(la1))
 
-    def get(self):
-        return self._parse_loadaverage(open('/proc/loadavg', 'rt').read())
+    async def get(self):
+        with open('/proc/loadavg', 'rt', encoding='utf-8') as f:
+            return self._parse_loadaverage(f.read())
 
-    @defer.inlineCallbacks
-    def sshGet(self):
-        loadavg, err, code = yield self.fork('/bin/cat /proc/loadavg')
+    async def sshGet(self):
+        loadavg, err, code = await self.fork('/bin/cat /proc/loadavg')
 
         if code == 0:
-            defer.returnValue(self._parse_loadaverage(loadavg))
+            return self._parse_loadaverage(loadavg)
         else:
-            raise Exception(err)
+            raise RuntimeError(err)
 
 
 @implementer(IDuctSource)
@@ -125,50 +123,48 @@ class DiskIO(Source):
                         'ok',
                         'Read latency (ms)',
                         read_lat,
-                        prefix='%s.read_latency' % dname
+                        prefix=f'{dname}.read_latency'
                     ))
 
                 if write_lat:
                     events.append(self.createEvent(
                         'ok',
                         'Write latency (ms)', write_lat,
-                        prefix='%s.write_latency' % dname
+                        prefix=f'{dname}.write_latency'
                     ))
 
                 events.extend([
                     self.createEvent('ok', 'Reads', reads,
-                                     prefix='%s.reads' % dname,
+                                     prefix=f'{dname}.reads',
                                      aggregation=Counter64),
                     self.createEvent('ok', 'Read Bps', read_sec * 512,
-                                     prefix='%s.read_bytes' % dname,
+                                     prefix=f'{dname}.read_bytes',
                                      aggregation=Counter64),
                     self.createEvent('ok', 'Writes', writes,
-                                     prefix='%s.writes' % dname,
+                                     prefix=f'{dname}.writes',
                                      aggregation=Counter64),
                     self.createEvent('ok', 'Write Bps', write_sec * 512,
-                                     prefix='%s.write_bytes' % dname,
+                                     prefix=f'{dname}.write_bytes',
                                      aggregation=Counter64),
                 ])
 
         return events
 
-    @defer.inlineCallbacks
-    def sshGet(self):
-        diskstats, err, code = yield self.fork('/bin/cat /proc/diskstats')
+    async def sshGet(self):
+        diskstats, err, code = await self.fork('/bin/cat /proc/diskstats')
 
         if code == 0:
             stats = diskstats.strip('\n').split('\n')
-            defer.returnValue(
-                self._parse_stats(stats))
+            return self._parse_stats(stats)
         else:
-            raise Exception(err)
+            raise RuntimeError(err)
 
     def _getstats(self):
-        stats = open('/proc/diskstats', 'rt').read()
-
+        with open('/proc/diskstats', 'rt', encoding='utf-8') as f:
+            stats = f.read()
         return stats.strip('\n').split('\n')
 
-    def get(self):
+    async def get(self):
         stats = self._getstats()
         return self._parse_stats(stats)
 
@@ -197,7 +193,7 @@ class CPU(Source):
 
     def _read_proc_stat(self):
         cpus = []
-        with open('/proc/stat', 'rt') as procstat:
+        with open('/proc/stat', 'rt', encoding='utf-8') as procstat:
             for l in procstat:
                 if l.startswith('cpu'):
                     cpus.append(l.strip('\n'))
@@ -245,21 +241,20 @@ class CPU(Source):
         if metrics:
             events = [
                 self.createEvent('ok',
-                                 'CPU %s %s%%' % (name, int(cpu_m * 100)),
+                                 f'CPU {name} {int(cpu_m * 100)}%',
                                  cpu_m, prefix=prefix+name)
                 for name, cpu_m in metrics[1:]
             ]
 
             events.append(self.createEvent(
-                'ok', 'CPU %s%%' % int(metrics[0][1] * 100), metrics[0][1],
+                'ok', f'CPU {int(metrics[0][1] * 100)}%', metrics[0][1],
                 prefix=prefix.rstrip('.')))
 
             return events
         return None
 
-    @defer.inlineCallbacks
-    def sshGet(self):
-        procstat, err, code = yield self.fork('cat /proc/stat')
+    async def sshGet(self):
+        procstat, err, code = await self.fork('cat /proc/stat')
         if code == 0:
             metrics = []
             stat = procstat.strip('\n').split('\n')
@@ -274,11 +269,11 @@ class CPU(Source):
                 if stats:
                     metrics.extend(self._transpose_metrics(stats, prefix))
 
-            defer.returnValue(metrics or None)
+            return metrics or None
         else:
-            raise Exception(err)
+            raise RuntimeError(err)
 
-    def get(self):
+    async def get(self):
         stat = self._read_proc_stat()
         metrics = []
         for cpu in stat:
@@ -319,21 +314,20 @@ class Memory(Source):
         total = dat['MemTotal']
         used = total - free
 
-        return self.createEvent('ok', 'Memory %s/%s' % (used, total),
+        return self.createEvent('ok', f'Memory {used}/{total}',
                                 used/float(total))
 
-    def get(self):
-        mem = open('/proc/meminfo')
-        return self._parse_stats(mem)
+    async def get(self):
+        with open('/proc/meminfo', 'rt', encoding='utf-8') as f:
+            return self._parse_stats(f)
 
-    @defer.inlineCallbacks
-    def sshGet(self):
-        mem, err, code = yield self.fork('/bin/cat /proc/meminfo')
+    async def sshGet(self):
+        mem, err, code = await self.fork('/bin/cat /proc/meminfo')
 
         if code == 0:
-            defer.returnValue(self._parse_stats(mem.strip('\n').split('\n')))
+            return self._parse_stats(mem.strip('\n').split('\n'))
         else:
-            raise Exception(err)
+            raise RuntimeError(err)
 
 
 @implementer(IDuctSource)
@@ -354,11 +348,10 @@ class DiskFree(Source):
 
     ssh = True
 
-    @defer.inlineCallbacks
-    def get(self):
+    async def get(self):
         disks = self.config.get('disks')
 
-        out, _, _ = yield self.fork('/bin/df', args=('-lPx', 'tmpfs',))
+        out, _, _ = await self.fork('/bin/df', args=('-lPx', 'tmpfs',))
 
         out = [i.split() for i in out.strip('\n').split('\n')[1:]]
 
@@ -373,15 +366,15 @@ class DiskFree(Source):
                 used = int(used)
                 free = int(free)
                 events.extend([
-                    self.createEvent('ok', 'Disk percent used %s%%' % (util),
-                                     util, prefix="%s.used" % disk),
-                    self.createEvent('ok', 'Disk bytes used %s kB' % (used),
-                                     used, prefix="%s.bytes" % disk),
-                    self.createEvent('ok', 'Disk free %s kB' % (free),
-                                     free, prefix="%s.free" % disk)
+                    self.createEvent('ok', f'Disk percent used {util}%',
+                                     util, prefix=f'{disk}.used'),
+                    self.createEvent('ok', f'Disk bytes used {used} kB',
+                                     used, prefix=f'{disk}.bytes'),
+                    self.createEvent('ok', f'Disk free {free} kB',
+                                     free, prefix=f'{disk}.free')
                 ])
 
-        defer.returnValue(events)
+        return events
 
 @implementer(IDuctSource)
 class Network(Source):
@@ -422,47 +415,45 @@ class Network(Source):
 
             ev.extend([
                 self.createEvent('ok',
-                                 'Network %s TX bytes/sec' % (iface),
-                                 tx_bytes, prefix='%s.tx_bytes' % iface,
+                                 f'Network {iface} TX bytes/sec',
+                                 tx_bytes, prefix=f'{iface}.tx_bytes',
                                  aggregation=Counter64),
                 self.createEvent('ok',
-                                 'Network %s TX packets/sec' % (iface),
-                                 tx_packets, prefix='%s.tx_packets' % iface,
+                                 f'Network {iface} TX packets/sec',
+                                 tx_packets, prefix=f'{iface}.tx_packets',
                                  aggregation=Counter64),
                 self.createEvent('ok',
-                                 'Network %s TX errors/sec' % (iface),
-                                 tx_err, prefix='%s.tx_errors' % iface,
+                                 f'Network {iface} TX errors/sec',
+                                 tx_err, prefix=f'{iface}.tx_errors',
                                  aggregation=Counter64),
                 self.createEvent('ok',
-                                 'Network %s RX bytes/sec' % (iface),
-                                 rx_bytes, prefix='%s.rx_bytes' % iface,
+                                 f'Network {iface} RX bytes/sec',
+                                 rx_bytes, prefix=f'{iface}.rx_bytes',
                                  aggregation=Counter64),
                 self.createEvent('ok',
-                                 'Network %s RX packets/sec' % (iface),
-                                 rx_packets, prefix='%s.rx_packets' % iface,
+                                 f'Network {iface} RX packets/sec',
+                                 rx_packets, prefix=f'{iface}.rx_packets',
                                  aggregation=Counter64),
                 self.createEvent('ok',
-                                 'Network %s RX errors/sec' % (iface),
-                                 rx_err, prefix='%s.rx_errors' % iface,
+                                 f'Network {iface} RX errors/sec',
+                                 rx_err, prefix=f'{iface}.rx_errors',
                                  aggregation=Counter64),
             ])
 
         return ev
 
     def _readStats(self):
-        proc_dev = open('/proc/net/dev', 'rt').read()
-
+        with open('/proc/net/dev', 'rt', encoding='utf-8') as f:
+            proc_dev = f.read()
         return proc_dev.strip('\n').split('\n')[2:]
 
-    @defer.inlineCallbacks
-    def sshGet(self):
-        net, err, code = yield self.fork('/bin/cat /proc/net/dev')
+    async def sshGet(self):
+        net, err, code = await self.fork('/bin/cat /proc/net/dev')
 
         if code == 0:
-            defer.returnValue(self._parse_stats(
-                net.strip('\n').split('\n')[2:]))
+            return self._parse_stats(net.strip('\n').split('\n')[2:])
         else:
-            raise Exception(err)
+            raise RuntimeError(err)
 
-    def get(self):
+    async def get(self):
         return self._parse_stats(self._readStats())

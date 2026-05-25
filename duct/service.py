@@ -11,19 +11,17 @@ import os
 import importlib
 import re
 import copy
+import asyncio
+import logging
 
-from twisted.application import service
-from twisted.internet import task, reactor, defer
-from twisted.python import log
+log = logging.getLogger(__name__)
 
 
-class DuctService(service.Service):
-    """Duct service
+class DuctService(object):
+    """Duct service — manages sources, outputs, event routing, and watchdog."""
 
-    Runs timers, configures sources and and manages the queue
-    """
     def __init__(self, config):
-        self.running = 0
+        self.running = False
         self.sources = []
         self.lastEvents = {}
         self.outputs = {}
@@ -36,16 +34,13 @@ class DuctService(service.Service):
 
         self.eventCounter = 0
 
-        self.factory = None
-        self.protocol = None
-        self.watchdog = None
+        self._watchdog_task = None
 
         self.config = config
 
         if os.path.exists('/var/lib/duct'):
             sys.path.append('/var/lib/duct')
 
-        # Read some config stuff
         self.debug = float(self.config.get('debug', False))
         self.ttl = float(self.config.get('ttl', 60.0))
         self.stagger = float(self.config.get('stagger', 0.2))
@@ -61,9 +56,8 @@ class DuctService(service.Service):
 
         self.setupSources(self.config)
 
-    def setupOutputs(self, config):
-        """Setup output processors"""
-
+    async def setupOutputs(self, config):
+        """Set up output processors"""
         if self.server:
             if self.proto == 'tcp':
                 defaultOutput = {
@@ -85,54 +79,45 @@ class DuctService(service.Service):
             if 'debug' not in output:
                 output['debug'] = self.debug
 
-            cl = output['output'].split('.')[-1]                # class
-            path = '.'.join(output['output'].split('.')[:-1])   # import path
+            cl = output['output'].split('.')[-1]
+            path = '.'.join(output['output'].split('.')[:-1])
 
-            # Import the module and construct the output object
-            outputObj = getattr(
-                importlib.import_module(path), cl)(output, self)
+            outputObj = getattr(importlib.import_module(path), cl)(output, self)
 
             name = output.get('name', None)
 
-            # Add the output to our routing hash
             if name in self.outputs:
                 self.outputs[name].append(outputObj)
             else:
                 self.outputs[name] = [outputObj]
 
-            # connect the output
-            reactor.callLater(0, outputObj.createClient)
+            asyncio.create_task(outputObj.createClient())
 
     def createSource(self, source):
-        """Construct the source object as defined in the configuration
-        """
-
+        """Construct the source object as defined in the configuration"""
         if source.get('path'):
             path = source['path']
             if path not in sys.path:
                 sys.path.append(path)
 
-        # Resolve the source
-        cl = source['source'].split('.')[-1]                # class
-        path = '.'.join(source['source'].split('.')[:-1])   # import path
+        cl = source['source'].split('.')[-1]
+        path = '.'.join(source['source'].split('.')[:-1])
 
-        # Import the module and get the object source we care about
         sourceObj = getattr(importlib.import_module(path), cl)
 
         if 'debug' not in source:
             source['debug'] = self.debug
 
-        if 'ttl' not in source.keys():
+        if 'ttl' not in source:
             source['ttl'] = self.ttl
 
-        if 'interval' not in source.keys():
+        if 'interval' not in source:
             source['interval'] = self.inter
 
         return sourceObj(source, self.sendEvent, self)
 
     def setupTriggers(self, source, sobj):
-        """Setup trigger actions for a source
-        """
+        """Set up trigger actions for a source"""
         if source.get('critical'):
             self.critical[sobj] = [(re.compile(key), val)
                                    for key, val in source['critical'].items()]
@@ -142,17 +127,16 @@ class DuctService(service.Service):
                                for key, val in source['warning'].items()]
 
     def setupSources(self, config):
-        """Sets up source objects from the given config"""
+        """Set up source objects from the given config"""
         sources = config.get('sources', [])
 
         for source in sources:
             src = self.createSource(source)
             self.setupTriggers(source, src)
-
             self.sources.append(src)
 
     def _aggregateQueue(self, events):
-        # Handle aggregation for each event
+        """Handle aggregation for each event"""
         queue = []
         for ev in events:
             if ev.aggregation:
@@ -162,8 +146,7 @@ class DuctService(service.Service):
                 if eid in self.evCache:
                     lastM, lastTime = self.evCache[eid]
                     tDelta = ev.time - lastTime
-                    metric = ev.aggregation(
-                        lastM, ev.metric, tDelta)
+                    metric = ev.aggregation(lastM, ev.metric, tDelta)
                     if metric:
                         ev.metric = metric
                         queue.append(ev)
@@ -175,27 +158,25 @@ class DuctService(service.Service):
         return queue
 
     def setStates(self, source, queue):
-        """
-        Check Event triggers against the configured source and apply the
-        corresponding state
-        """
+        """Apply warning/critical states to events based on source triggers"""
         for ev in queue:
             if ev.state == 'ok':
                 for key, val in self.warn.get(source, []):
                     if key.match(ev.service):
-                        state = eval("service %s" % val, {'service': ev.metric})
+                        state = eval(  # pylint: disable=eval-used
+                            f"service {val}", {'service': ev.metric})
                         if state:
                             ev.state = 'warning'
 
                 for key, val in self.critical.get(source, []):
                     if key.match(ev.service):
-                        state = eval("service %s" % val, {'service': ev.metric})
+                        state = eval(  # pylint: disable=eval-used
+                            f"service {val}", {'service': ev.metric})
                         if state:
                             ev.state = 'critical'
 
     def routeEvent(self, source, events):
-        """Route event to the queue of the output configured for it
-        """
+        """Route events to the configured output(s) for this source"""
         routes = source.config.get('route', None)
 
         if not isinstance(routes, list):
@@ -203,21 +184,18 @@ class DuctService(service.Service):
 
         for route in routes:
             if self.debug:
-                log.msg("Sending events %s to %s" % (events, route))
+                log.debug("Sending events %s to %s", events, route)
 
-            if not route in self.outputs:
-                # Non existant route
-                log.msg('Could not route %s -> %s.' % (
-                    source.config['service'], route))
+            if route not in self.outputs:
+                log.warning('Could not route %s -> %s.',
+                            source.config['service'], route)
             else:
                 for output in self.outputs[route]:
-                    reactor.callLater(0, output.eventsReceived, events)
+                    asyncio.get_event_loop().call_soon(
+                        output.eventsReceived, events)
 
     def sendEvent(self, source, events):
-        """Callback that all event sources call when they have a new event
-        or list of events
-        """
-
+        """Callback that all event sources call when they have new events"""
         if isinstance(events, list):
             self.eventCounter += len(events)
         else:
@@ -232,47 +210,46 @@ class DuctService(service.Service):
 
             self.routeEvent(source, queue)
 
-        queue = []
-
         self.lastEvents[source] = time.time()
 
-    @defer.inlineCallbacks
-    def _startSource(self, source):
-        yield defer.maybeDeferred(source.startTimer)
+    async def _startSource(self, source):
+        await source.startTimer()
 
-    @defer.inlineCallbacks
-    def startService(self):
-        yield self.setupOutputs(self.config)
+    async def startService(self):
+        """Start all outputs and sources"""
+        await self.setupOutputs(self.config)
 
         if self.debug:
-            log.msg("Starting service")
+            log.debug("Starting service")
 
         stagger = 0
-        # Start sources internal timers
+        loop = asyncio.get_event_loop()
         for source in self.sources:
             if self.debug:
-                log.msg("Starting source " + source.config['service'])
-            # Stagger source timers, or use per-source start_delay
+                log.debug("Starting source %s", source.config['service'])
             start_delay = float(source.config.get('start_delay', stagger))
-            reactor.callLater(start_delay, self._startSource, source)
+            loop.call_later(start_delay,
+                            lambda s=source: asyncio.create_task(
+                                self._startSource(s)))
             stagger += self.stagger
 
-        reactor.callLater(stagger, self.startWatchdog)
-        self.running = 1
+        loop.call_later(stagger, self._launch_watchdog)
+        self.running = True
 
-    def startWatchdog(self):
-        """Start source watchdog
-        """
-        self.watchdog = task.LoopingCall(self.sourceWatchdog)
-        self.watchdog.start(10)
+    def _launch_watchdog(self):
+        self._watchdog_task = asyncio.create_task(self._watchdog_loop())
 
-    @defer.inlineCallbacks
-    def sourceWatchdog(self):
-        """Watchdog timer function.
+    async def _watchdog_loop(self):
+        """Periodically restart stale sources that have watchdog enabled"""
+        try:
+            while True:
+                await asyncio.sleep(10)
+                await self.sourceWatchdog()
+        except asyncio.CancelledError:
+            pass
 
-        Recreates sources which have not generated events in 10*interval if
-        they have watchdog set to true in their configuration
-        """
+    async def sourceWatchdog(self):
+        """Recreate sources which haven't generated events in 10×interval"""
         for i, source in enumerate(self.sources):
             if not source.config.get('watchdog', False):
                 continue
@@ -280,17 +257,17 @@ class DuctService(service.Service):
             if last:
                 sn = repr(source)
                 try:
-                    if last < (time.time()-(source.inter*10)):
-                        log.msg("Trying to restart stale source %s: %ss" % (
-                            sn, int(time.time() - last)
-                        ))
+                    if last < (time.time() - (source.inter * 10)):
+                        log.warning(
+                            "Trying to restart stale source %s: %ss",
+                            sn, int(time.time() - last))
 
                         source = self.sources.pop(i)
                         try:
-                            yield source.stopTimer()
+                            await source.stopTimer()
                         except Exception as ex:
-                            log.msg("Could not stop timer for %s: %s" % (
-                                sn, ex))
+                            log.warning("Could not stop timer for %s: %s",
+                                        sn, ex)
 
                         config = copy.deepcopy(source.config)
 
@@ -298,22 +275,31 @@ class DuctService(service.Service):
                         del source
 
                         source = self.createSource(config)
+                        asyncio.create_task(self._startSource(source))
 
-                        reactor.callLater(0, self._startSource, source)
                 except Exception as ex:
-                    log.msg("Could not reset source %s: %s" % (
-                        sn, ex))
+                    log.warning("Could not reset source %s: %s", sn, ex)
 
-    @defer.inlineCallbacks
-    def stopService(self):
-        self.running = 0
+    async def stopService(self):
+        """Stop all sources, outputs, and the watchdog"""
+        self.running = False
 
-        if self.watchdog and self.watchdog.running:
-            self.watchdog.stop()
+        if self._watchdog_task and not self._watchdog_task.done():
+            self._watchdog_task.cancel()
+            try:
+                await self._watchdog_task
+            except asyncio.CancelledError:
+                pass
 
         for source in self.sources:
-            yield defer.maybeDeferred(source.stopTimer)
+            try:
+                await source.stopTimer()
+            except Exception as ex:
+                log.warning("Error stopping source: %s", ex)
 
         for _, outputs in self.outputs.items():
             for output in outputs:
-                yield defer.maybeDeferred(output.stop)
+                try:
+                    await output.stop()
+                except Exception as ex:
+                    log.warning("Error stopping output: %s", ex)

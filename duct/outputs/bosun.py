@@ -4,15 +4,12 @@
 
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
-
-
 import json
 import base64
 
-from twisted.internet import defer
-
 from duct.outputs import opentsdb
 from duct.utils import HTTPRequest
+
 
 class Bosun(opentsdb.OpenTSDB):
     """Bosun HTTP API output
@@ -31,48 +28,41 @@ class Bosun(opentsdb.OpenTSDB):
     :type user: str.
     :param password: Optional basic auth password
     :type password: str.
-    :param debug: Log tracebacks from OpenTSDB
-    :type debug: bool.
     """
+
     def __init__(self, *a):
         opentsdb.OpenTSDB.__init__(self, *a)
-
         self.url = self.url.rstrip('/')
-
         self.metacache = {}
 
-    def createMetadata(self, metas):
-        """Create metadata objects for new service keys
-        """
+    async def createMetadata(self, metas):
+        """Create metadata objects for new service keys"""
         headers = {}
-        path = '/api/metadata/put'
         if self.user:
-            authorization = base64.b64encode('%s:%s' % (self.user,
-                                                        self.password)
-                                            ).decode()
-            headers['Authorization'] = ['Basic ' + authorization]
+            token = base64.b64encode(
+                f'{self.user}:{self.password}'.encode()
+            ).decode()
+            headers['Authorization'] = 'Basic ' + token
 
-        return HTTPRequest().getBody(self.url + path, 'POST', headers=headers,
-                                     data=json.dumps(metas).encode())
+        return await HTTPRequest().getBody(
+            self.url + '/api/metadata/put', 'POST',
+            headers=headers, data=json.dumps(metas).encode()
+        )
 
-    @defer.inlineCallbacks
-    def sendEvents(self, events):
-        tsdbEvents = []
-        metadataBatch = []
+    async def sendEvents(self, events):
+        tsdb_events = []
+        metadata_batch = []
         for event in events:
             if not self.metacache.get(event.service):
-                metadataBatch.append({
+                metadata_batch.append({
                     "Metric": event.service,
                     "Name": "rate",
                     "Value": "gauge"
                 })
                 self.metacache[event.service] = True
+            tsdb_events.append(self.transformEvent(event))
 
-            tsdbEvents.append(self.transformEvent(event))
+        if metadata_batch:
+            await self.createMetadata(metadata_batch)
 
-        if metadataBatch:
-            yield self.createMetadata(metadataBatch)
-
-        result = yield self.client.put(tsdbEvents)
-
-        defer.returnValue(result)
+        return await self.client.put(tsdb_events)

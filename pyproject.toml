@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ducted"
+version = "2.0"
+description = "A monitoring agent and event processor"
+license = { text = "MIT" }
+authors = [{ name = "Colin Alston", email = "colin@tamvera.com" }]
+requires-python = ">=3.11"
+dependencies = [
+    "zope.interface",
+    "PyYaml",
+    "protobuf",
+    "aiohttp",
+    "asyncssh",
+    "aiodns",
+    "pysnmp>=6.0",
+    "cryptography",
+    "service_identity",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Monitoring",
+]
+
+[project.urls]
+Homepage = "http://github.com/Tamvera/ducted"
+
+[project.optional-dependencies]
+dev = [
+    "asyncpg",
+    "construct<2.6",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pylint",
+]
+
+[project.scripts]
+ductd = "duct.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

@@ -8,28 +8,29 @@
 import os
 import itertools
 import copy
+import logging
+
 import yaml
 
-from twisted.python import log
+log = logging.getLogger(__name__)
 
 class ConfigurationError(Exception):
     """General exception class for Duct configuration issues
     """
-    pass
 
 class ConfigFile(object):
     """Duct configuration file parser and accessor
     """
     def __init__(self, path):
         if os.path.exists(path):
-            with open(path, 'rt') as conf:
-                self.raw_config = yaml.load(conf)
+            with open(path, 'rt', encoding='utf-8') as conf:
+                self.raw_config = yaml.load(conf, Loader=yaml.SafeLoader)
 
             if not self.raw_config:
                 self.raw_config = {}
-                log.msg("Warning: No configuration content")
+                log.warning("Warning: No configuration content")
         else:
-            raise Exception("Configuration file '%s' not found" % path)
+            raise ConfigurationError(f"Configuration file '{path}' not found")
 
         self.known_items = {
             'sources': list,
@@ -58,7 +59,7 @@ class ConfigFile(object):
 
         if not parse:
             raise ConfigurationError(
-                "%s must be one of type %s" % (item, repr(vtype)))
+                f"{item} must be one of type {repr(vtype)}")
 
     def _validate_config(self):
         for key, val in self.known_items.items():
@@ -72,7 +73,8 @@ class ConfigFile(object):
         self._build_blueprints()
 
     def _merge_includes(self):
-        both = lambda i1, i2, t: isinstance(i1, t) and isinstance(i2, t)
+        def both(i1, i2, t):
+            return isinstance(i1, t) and isinstance(i2, t)
 
         paths = self.raw_config.get('include_path', [])
         if not isinstance(paths, list):
@@ -91,8 +93,8 @@ class ConfigFile(object):
                          if fi.endswith('.yml') or fi.endswith('.yaml')]
 
                 for conf_file in files:
-                    with open(conf_file, 'rt') as yaml_path:
-                        conf = yaml.load(yaml_path)
+                    with open(conf_file, 'rt', encoding='utf-8') as yaml_path:
+                        conf = yaml.load(yaml_path, Loader=yaml.SafeLoader)
                         for key, val in conf.items():
                             if key in self.raw_config:
                                 if both(val, self.raw_config[key], dict):
@@ -108,11 +110,11 @@ class ConfigFile(object):
                                     self.raw_config[key] = val
                             else:
                                 self.raw_config[key] = val
-                        log.msg('Loadded additional configuration from %s'
-                                % conf_file)
+                        log.warning('Loadded additional configuration from %s',
+                                    conf_file)
             else:
-                log.msg(
-                    'Config Error: include_path %s does not exist' % ipath)
+                log.warning('Config Error: include_path %s does not exist',
+                            ipath)
 
     def _build_blueprints(self):
         # Turn toolboxes into a dict

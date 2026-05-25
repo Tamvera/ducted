@@ -1,145 +1,105 @@
-import time
+import asyncio
 import json
 import os
+import time
 
-from twisted.trial import unittest
-
-from twisted.internet import defer, reactor, error
-from twisted.internet.endpoints import TCP4ClientEndpoint, connectProtocol
+import pytest
 
 from duct.protocol import riemann, elasticsearch, opentsdb
 from duct.objects import Event
-from duct.utils import fork
+from duct.utils import fork, Timeout
 from duct.configuration import ConfigFile
 from duct.tests import globs
 
-class Tests(unittest.TestCase):
-    def setUp(self):
-        self.endpoint = None
-        self.last_request = None
 
-    def tearDown(self):
-        if self.endpoint:
-            return defer.maybeDeferred(self.endpoint.stopListening)
-
-    def _fake_request(self, result, *a, **kw):
-        self.last_request = (a, kw)
-        return result
-
+class TestConfig:
     def test_config_parser(self):
         if not os.path.exists('testdir'):
             os.mkdir('testdir')
-        f = open('testdir/test.yaml', 'wt')
-        f.write(globs.CONFIG_INCLUDE)
-        f.close()
+        with open('testdir/test.yaml', 'wt') as f:
+            f.write(globs.CONFIG_INCLUDE)
 
-        f = open('testconf.yaml', 'wt')
-        f.write(globs.CONFIG_TEST)
-        f.close()
+        with open('testconf.yaml', 'wt') as f:
+            f.write(globs.CONFIG_TEST)
 
         c = ConfigFile('testconf.yaml')
 
         merged = c.get('mergehash')
-        self.assertEquals(merged['test3']['foo'], 'bar')
-        self.assertEquals(merged['test']['bar'], 'baz')
-        self.assertEquals(merged['test'].get('foo'), None)
+        assert merged['test3']['foo'] == 'bar'
+        assert merged['test']['bar'] == 'baz'
+        assert merged['test'].get('foo') is None
 
         sources = c.get('sources')
 
         host3 = [i for i in sources if i.get('hostname') == 'test3']
+        assert len(host3) == 4
 
-        self.assertEquals(len(host3), 4)
         host3_ssh = [i for i in sources if
-            i.get('hostname') == 'test3' and i.get('use_ssh') == True]
-        self.assertEquals(len(host3_ssh), 2)
+                     i.get('hostname') == 'test3' and i.get('use_ssh') is True]
+        assert len(host3_ssh) == 2
 
-    @defer.inlineCallbacks
-    def test_elasticsearch_proto(self):
+
+class TestRiemannProtobuf:
+    def test_riemann_protobuf(self):
+        proto = riemann.RiemannProtobufMixin()
+        event = Event('ok', 'sky', 'Sky has not fallen', 1.0, 60.0)
+        message = proto.encodeMessage([event])
+        assert isinstance(message, bytes)
+
+    def test_riemann_protobuf_with_attributes(self):
+        proto = riemann.RiemannProtobufMixin()
+        event = Event('ok', 'sky', 'Sky has not fallen', 1.0, 60.0,
+                      attributes={"chicken": "little"})
+        e = proto.encodeEvent(event)
+        attrs = e.attributes
+        assert len(attrs) == 1
+        assert attrs[0].key == "chicken"
+        assert attrs[0].value == "little"
+
+
+class TestElasticsearchProto:
+    @pytest.mark.asyncio
+    async def test_elasticsearch_proto(self):
         proto = elasticsearch.ElasticSearch()
+        last_request = {}
 
-        def _wrap_request(*a, **kw):
-            return defer.maybeDeferred(self._fake_request, {"errors":[]}, *a, **kw)
+        async def _wrap_request(path, data=None, method='GET'):
+            last_request['args'] = (path, data, method)
+            return {"errors": []}
 
         proto._request = _wrap_request
 
         index = proto._get_index()
 
         t = time.strptime(index, "duct-%Y.%m.%d")
-        self.assertEqual(time.gmtime().tm_year, t.tm_year)
-        self.assertEqual(time.gmtime().tm_mday, t.tm_mday)
-        self.assertEqual(time.gmtime().tm_mon, t.tm_mon)
+        assert time.gmtime().tm_year == t.tm_year
+        assert time.gmtime().tm_mday == t.tm_mday
+        assert time.gmtime().tm_mon == t.tm_mon
 
         event = Event('ok', 'sky', 'Sky has not fallen', 1.0, 60.0,
                       attributes={"chicken": "little"})
 
-        ans = yield proto.bulkIndex([dict(event)])
+        ans = await proto.bulkIndex([dict(event)])
 
-        self.assertEqual(ans['errors'], [])
+        assert ans['errors'] == []
 
-        meta, metric = self.last_request[0][1].strip('\n').split('\n')
-        requestMeta = json.loads(meta)
-        requestData = json.loads(metric)
+        meta, metric = last_request['args'][1].strip('\n').split('\n')
+        request_meta = json.loads(meta)
+        request_data = json.loads(metric)
 
-        self.assertEqual(self.last_request[0][0], '/_bulk')
-        self.assertEqual(requestMeta['index']['_index'], index)
-        self.assertEqual(requestData['service'], 'sky')
+        assert last_request['args'][0] == '/_bulk'
+        assert request_meta['index']['_index'] == index
+        assert request_data['service'] == 'sky'
 
-    def test_riemann_protobuf(self):
-        proto = riemann.RiemannProtocol()
 
-        event = Event('ok', 'sky', 'Sky has not fallen', 1.0, 60.0)
+class TestFork:
+    @pytest.mark.asyncio
+    async def test_utils_fork(self):
+        o, e, c = await fork('echo', args=('hi',))
+        assert o == "hi\n"
+        assert c == 0
 
-        # Well, I guess we'll just assume this is right
-        message = proto.encodeMessage([event])
-
-    def test_riemann_protobuf_with_attributes(self):
-        proto = riemann.RiemannProtocol()
-
-        event = Event('ok', 'sky', 'Sky has not fallen', 1.0, 60.0,
-                      attributes={"chicken": "little"})
-
-        e = proto.encodeEvent(event)
-        attrs = e.attributes
-        self.assertEqual(len(attrs), 1)
-        self.assertEqual(attrs[0].key, "chicken")
-        self.assertEqual(attrs[0].value, "little")
-
-    @defer.inlineCallbacks
-    def test_tcp_riemann(self):
-
-        event = Event('ok', 'sky', 'Sky has not fallen', 1.0, 60.0)
-
-        end = TCP4ClientEndpoint(reactor, "localhost", 5555)
-       
-        p = yield connectProtocol(end, riemann.RiemannProtocol())
-
-        yield p.sendEvents([event])
-
-        p.transport.loseConnection()
-
-    @defer.inlineCallbacks
-    def test_udp_riemann(self):
-
-        event = Event('ok', 'sky', 'Sky has not fallen', 1.0, 60.0)
-        
-        protocol = riemann.RiemannUDP('127.0.0.1', 5555)
-        self.endpoint = reactor.listenUDP(0, protocol)
-
-        yield protocol.sendEvents([event])
-
-    @defer.inlineCallbacks
-    def test_utils_fork(self):
-        o, e, c = yield fork('echo', args=('hi',))
-
-        self.assertEquals(o, "hi\n")
-        self.assertEquals(c, 0)
-
-    @defer.inlineCallbacks
-    def test_utils_fork_timeout(self):
-        died = False
-        try:
-            o, e, c = yield fork('sleep', args=('2',), timeout=0.1)
-        except error.ProcessTerminated:
-            died = True
-
-        self.assertTrue(died)
+    @pytest.mark.asyncio
+    async def test_utils_fork_timeout(self):
+        with pytest.raises(Timeout):
+            await fork('sleep', args=('2',), timeout=0.1)

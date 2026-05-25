@@ -6,10 +6,10 @@
 Welcome to Duct's documentation!
 ==================================
 
-Duct is a modular gateway and event router built using the
-Twisted framework. It can be used as a monitoring agent and ETL
-framework for a wide range of applications, and provides a simple
-yet "powerful" plugin mechanism to expand its capabilities.
+Duct is a modular gateway and event router built using Python asyncio.
+It can be used as a monitoring agent and ETL framework for a wide range
+of applications, and provides a simple yet "powerful" plugin mechanism
+to expand its capabilities.
 
 Contents:
 

@@ -9,40 +9,24 @@ import time
 import fcntl
 import random
 import struct
+import asyncio
 
-from zope.interface import implementer
-
-from twisted.internet import task, defer, reactor, udp
-from twisted.internet.protocol import DatagramProtocol
-from twisted.internet.interfaces import ISystemHandle
-
-
-class STFU(object):
-    """OMG SHUT UP
-    """
-    msg = lambda x, y: None
-udp.log = STFU()
 
 class IP(object):
-    """IP header decoder
-    """
+    """IP header decoder"""
     def __init__(self, packet):
         self.readPacket(packet)
 
     def readPacket(self, packet):
-        """Reads a raw IP packet
-        """
-        vl = struct.unpack('!b', packet[0])[0]
+        """Decode an IP packet header"""
+        vl = struct.unpack('!b', packet[0:1])[0]
         l = (vl & 0xf) * 4
-
-        #head = packet[:l]
         self.offset = struct.unpack('!H', packet[6:8])
-
         self.payload = packet[l:]
 
+
 class EchoPacket(object):
-    """ICMP Echo packet encoder and decoder
-    """
+    """ICMP Echo packet encoder and decoder"""
     def __init__(self, seq=0, eid=None, data=None, packet=None):
         if packet:
             self.decodePacket(packet)
@@ -54,192 +38,150 @@ class EchoPacket(object):
             self.encodePacket()
 
     def calculateChecksum(self, buf):
-        """Calculate the ICMP ping checksum
-        """
+        """Calculate ICMP checksum over buf"""
+        if isinstance(buf, str):
+            buf = buf.encode('latin-1')
         nleft = len(buf)
         chksum = 0
         pos = 0
         while nleft > 1:
-            chksum = ord(buf[pos]) * 256 + (ord(buf[pos + 1]) + chksum)
-            pos = pos + 2
-            nleft = nleft - 2
+            chksum = buf[pos] * 256 + (buf[pos + 1] + chksum)
+            pos += 2
+            nleft -= 2
         if nleft == 1:
-            chksum = chksum + ord(buf[pos]) * 256
-
+            chksum = chksum + buf[pos] * 256
         chksum = (chksum >> 16) + (chksum & 0xFFFF)
         chksum += (chksum >> 16)
-        chksum = (~chksum & 0xFFFF)
-
-        return chksum
+        return (~chksum) & 0xFFFF
 
     def encodePacket(self):
-        """Encode ICMP packet
-        """
+        """Encode an ICMP echo request packet"""
         head = struct.pack('!bb', 8, 0)
-
         echo = struct.pack('!HH', self.seq, self.eid)
-
-        chk = self.calculateChecksum(
-            head + '\x00\x00' + echo + self.data)
-
+        if isinstance(self.data, str):
+            data_bytes = self.data.encode('latin-1')
+        else:
+            data_bytes = self.data
+        chk = self.calculateChecksum(head + b'\x00\x00' + echo + data_bytes)
         chk = struct.pack('!H', chk)
-
-        self.packet = head + chk + echo + self.data
+        self.packet = head + chk + echo + data_bytes
 
     def decodePacket(self, packet):
-        """Decode ICMP packet
-        """
+        """Decode an ICMP echo reply packet"""
         self.icmp_type, self.code, self.chk, self.seq, self.eid = struct.unpack(
             '!bbHHH', packet[:8])
-
         self.data = packet[8:]
-
-        rc = '%s\x00\x00%s' % (packet[:2], packet[4:])
+        rc = packet[:2] + b'\x00\x00' + packet[4:]
         mychk = self.calculateChecksum(rc)
-
-        if mychk == self.chk:
-            self.valid = True
-        else:
-            self.valid = False
+        self.valid = mychk == self.chk
 
     def __repr__(self):
-        return "<type=%s code=%s chk=%s seq=%s data=%s valid=%s>" % (
-            self.icmp_type, self.code, self.chk, self.seq, len(self.data),
-            self.valid
-        )
+        return (f"<type={self.icmp_type} code={self.code} chk={self.chk}"
+                f" seq={self.seq} data={len(self.data)} valid={self.valid}>")
 
-class ICMPPing(DatagramProtocol):
-    """ICMP Ping implementation
-    """
-    noisy = False
-    def __init__(self, d, dst, count, inter=0.2, maxwait=1000, size=64):
-        self.deferred = d
+
+class _ICMPPinger:
+    """Internal state machine for an async ICMP ping"""
+
+    def __init__(self, sock, dst, count, inter, maxwait, size, loop):
+        self.sock = sock
         self.dst = dst
-        self.size = size - 36
         self.count = count
+        self.inter = inter
+        self.maxwait = maxwait
+        self.size = size - 36
+        self.loop = loop
         self.seq = 0
         self.start = 0
         self.id_base = random.randint(0, 40000)
-        self.maxwait = maxwait
-        self.inter = inter
-
-        self.t = task.LoopingCall(self.ping)
         self.recv = []
+        self._done = loop.create_future()
+        self._send_handle = None
 
-    def datagramReceived(self, datagram, _address):
-        now = int(time.time()*1000000)
+    def _data_received(self):
+        try:
+            datagram, _ = self.sock.recvfrom(4096)
+        except BlockingIOError:
+            return
+        now = int(time.time() * 1000000)
         packet = IP(datagram)
         icmp = EchoPacket(packet=packet.payload)
-
         if icmp.valid and icmp.code == 0 and icmp.icmp_type == 0:
-            # Check ID is from this pinger
             if (icmp.eid - icmp.seq) == self.id_base:
                 ts = icmp.data[:8]
-                #data = icmp.data[8:]
-                delta = (now - struct.unpack('!Q', ts)[0])/1000.0
-
-                self.maxwait = (self.maxwait + delta)/2.0
-
+                delta = (now - struct.unpack('!Q', ts)[0]) / 1000.0
+                self.maxwait = (self.maxwait + delta) / 2.0
                 self.recv.append((icmp.seq, delta))
 
-    def createData(self, n):
-        """Create some random data to send
-        """
-        s = ""
+    def _create_data(self, n):
+        s = b''
         c = 33
         for _ in range(n):
-            s += chr(c)
-            if c < 126:
-                c += 1
-            else:
-                c = 33
+            s += bytes([c])
+            c = c + 1 if c < 126 else 33
         return s
 
-    def sendEchoRequest(self):
-        """Pack the packet with an ascii table and send it
-        """
-        md = self.createData(self.size)
-
-        us = int(time.time()*1000000)
-        data = '%s%s' % (struct.pack('!Q', us), md)
-
-        pkt = EchoPacket(seq=self.seq, eid=self.id_base+self.seq, data=data)
-
-        self.transport.write(pkt.packet)
+    def _send_echo(self):
+        data = struct.pack('!Q', int(time.time() * 1000000))
+        data += self._create_data(self.size)
+        pkt = EchoPacket(seq=self.seq, eid=self.id_base + self.seq, data=data)
+        self.sock.sendto(pkt.packet, (self.dst, 0))
         self.seq += 1
 
-    def ping(self):
-        """Send a ping
-        """
         if self.seq < self.count:
-            self.sendEchoRequest()
+            self._send_handle = self.loop.call_later(
+                self.inter, self._send_echo)
         else:
-            self.t.stop()
-
-            tdelay = (self.maxwait * self.count)/1000.0
+            tdelay = (self.maxwait * self.count) / 1000.0
             elapsed = time.time() - self.start
-            remaining = tdelay - elapsed
-            if remaining < 0.05:
-                remaining = 0.05
+            remaining = max(tdelay - elapsed, 0.05)
+            self.loop.call_later(remaining, self._finish)
 
-            reactor.callLater(remaining, self.endPing)
-
-    def endPing(self):
-        """Stop ICMP ping
-        """
+    def _finish(self):
         r = len(self.recv)
-        loss = (self.count - r) / float(self.count)
-        loss = int(100*loss)
-        if r:
-            avgLatency = sum([i[1] for i in self.recv]) / float(r)
-        else:
-            avgLatency = None
+        loss = int(100 * (self.count - r) / float(self.count))
+        avg_latency = sum(d for _, d in self.recv) / float(r) if r else None
+        if not self._done.done():
+            self._done.set_result((loss, avg_latency))
 
-        self.deferred.callback((loss, avgLatency))
-
-    def startPing(self):
-        """Start ICMP ping
-        """
-        self.transport.connect(self.dst, random.randint(33434, 33534))
+    async def run(self):
+        """Run the ping and return (packet_loss_percent, avg_latency_ms)."""
+        self.sock.connect((self.dst, random.randint(33434, 33534)))
         self.start = time.time()
-        self.t.start(self.inter)
+        self.loop.add_reader(self.sock.fileno(), self._data_received)
+        try:
+            self._send_echo()
+            return await asyncio.wait_for(
+                self._done, timeout=(self.maxwait * self.count / 1000.0) + 2.0
+            )
+        except asyncio.TimeoutError:
+            r = len(self.recv)
+            loss = int(100 * (self.count - r) / float(self.count))
+            avg_latency = sum(d for _, d in self.recv) / float(r) if r else None
+            return (loss, avg_latency)
+        finally:
+            self.loop.remove_reader(self.sock.fileno())
+            if self._send_handle:
+                self._send_handle.cancel()
 
-    def startProtocol(self):
-        self.startPing()
 
-@implementer(ISystemHandle)
-class ICMPPort(udp.Port):
-    """Raw socket listener for ICMP
+async def ping(dst, count, inter=0.2, maxwait=1000, size=64):
+    """Send ICMP echo requests to `dst` `count` times.
+
+    Returns (packet_loss_percent, avg_latency_ms) or (100, None) on failure.
+
+    Requires CAP_NET_RAW or root privileges.
     """
-    maxThroughput = 256 * 1024
+    loop = asyncio.get_event_loop()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
+    sock.setblocking(False)
 
-    def createInternetSocket(self):
-        s = socket.socket(
-            socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
+    fd = sock.fileno()
+    flags = fcntl.fcntl(fd, fcntl.F_GETFD)
+    fcntl.fcntl(fd, fcntl.F_SETFD, flags | fcntl.FD_CLOEXEC)
 
-        s.setblocking(0)
-
-        fd = s.fileno()
-
-        # Set close-on-exec
-
-        flags = fcntl.fcntl(fd, fcntl.F_GETFD)
-        flags = flags | fcntl.FD_CLOEXEC
-        fcntl.fcntl(fd, fcntl.F_SETFD, flags)
-
-        return s
-
-def ping(dst, count, inter=0.2, maxwait=1000, size=64):
-    """Sends ICMP echo requests to destination `dst` `count` times.
-    Returns a deferred which fires when responses are finished.
-    """
-    def _then(result, p):
-        p.stopListening()
-        return result
-
-    d = defer.Deferred()
-    p = ICMPPort(0, ICMPPing(d, dst, count, inter, maxwait, size), "", 8192,
-                 reactor)
-    p.startListening()
-
-    return d.addCallback(_then, p)
+    try:
+        pinger = _ICMPPinger(sock, dst, count, inter, maxwait, size, loop)
+        return await pinger.run()
+    finally:
+        sock.close()

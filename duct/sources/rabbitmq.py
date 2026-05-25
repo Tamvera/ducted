@@ -6,15 +6,15 @@
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
 
+import logging
 import time
 
 from zope.interface import implementer
 
-from twisted.internet import defer
-from twisted.python import log
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
+
+log = logging.getLogger(__name__)
 
 
 @implementer(IDuctSource)
@@ -47,13 +47,12 @@ class Queues(Source):
         self.last_ready = 0
         self.last_unack = 0
 
-    @defer.inlineCallbacks
-    def get(self):
+    async def get(self):
         vhost = self.config.get('vhost', '/')
 
         mqctl = self.config.get('rabbitmqctl', '/usr/sbin/rabbitmqctl')
 
-        out, err, code = yield self.fork(mqctl, args=(
+        out, err, code = await self.fork(mqctl, args=(
             'list_queues', '-p', vhost, 'name', 'messages_ready',
             'messages_unacknowledged'
         ))
@@ -79,10 +78,11 @@ class Queues(Source):
                 total_unack += unack
 
                 events.extend([
-                    self.createEvent('ok', '%s unacknowledged messages: %s' % (
-                        name, unack), unack, prefix='%s.unack' % name),
-                    self.createEvent('ok', '%s ready messages: %s' % (
-                        name, ready), ready, prefix='%s.ready' % name)
+                    self.createEvent('ok',
+                                     f'{name} unacknowledged messages: {unack}',
+                                     unack, prefix=f'{name}.unack'),
+                    self.createEvent('ok', f'{name} ready messages: {ready}',
+                                     ready, prefix=f'{name}.ready')
                 ])
 
                 if name in self.ready:
@@ -95,13 +95,13 @@ class Queues(Source):
                     events.extend([
                         self.createEvent(
                             'ok',
-                            '%s unacknowledged rate: %0.2f' % (name, urate),
-                            urate, prefix='%s.unack_rate' % name
+                            f'{name} unacknowledged rate: {urate:0.2f}',
+                            urate, prefix=f'{name}.unack_rate'
                         ),
                         self.createEvent(
                             'ok',
-                            '%s ready rate: %0.2f' % (name, rrate),
-                            rrate, prefix='%s.ready_rate' % name
+                            f'{name} ready rate: {rrate:0.2f}',
+                            rrate, prefix=f'{name}.ready_rate'
                         )
                     ])
 
@@ -116,22 +116,22 @@ class Queues(Source):
                 events.extend([
                     self.createEvent(
                         'ok',
-                        'Total unacknowledged rate: %0.2f' % urate,
+                        f'Total unacknowledged rate: {urate:0.2f}',
                         urate, prefix='total.unack_rate'
                     ),
                     self.createEvent(
                         'ok',
-                        'Total ready rate: %0.2f' % rrate,
+                        f'Total ready rate: {rrate:0.2f}',
                         rrate, prefix='total.ready_rate'
                     ),
                     self.createEvent(
                         'ok',
-                        'Total unacknowledged messages: %s' % total_unack,
+                        f'Total unacknowledged messages: {total_unack}',
                         total_unack, prefix='total.unack'
                     ),
                     self.createEvent(
                         'ok',
-                        'Total ready messages: %s' % total_ready,
+                        f'Total ready messages: {total_ready}',
                         total_ready, prefix='total.ready'
                     )
                 ])
@@ -141,6 +141,6 @@ class Queues(Source):
 
             self.last_t = t
 
-            defer.returnValue(events)
+            return events
         else:
-            log.msg('Error running rabbitmqctl: ' + repr(err))
+            log.warning('Error running rabbitmqctl: %s', repr(err))

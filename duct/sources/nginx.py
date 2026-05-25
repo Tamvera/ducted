@@ -13,8 +13,6 @@ import datetime
 
 from zope.interface import implementer
 
-from twisted.internet import defer
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 
@@ -62,12 +60,11 @@ class Nginx(Source):
 
         return metrics
 
-    @defer.inlineCallbacks
-    def get(self):
+    async def get(self):
         url = self.config.get('url', self.config.get('stats_url'))
 
-        body = yield HTTPRequest().getBody(
-            url, headers={'User-Agent': ['Duct']}
+        body = await HTTPRequest().getBody(
+            url, headers={'User-Agent': 'Duct'}
         )
 
         events = []
@@ -77,10 +74,10 @@ class Nginx(Source):
 
             for k, v in metrics.items():
                 metric, aggr = v
-                events.append(self.createEvent('ok', 'Nginx %s' % (k), metric,
+                events.append(self.createEvent('ok', f'Nginx {k}', metric,
                                                prefix=k, aggregation=aggr))
 
-        defer.returnValue(events)
+        return events
 
 @implementer(IDuctSource)
 class NginxLogMetrics(Source):
@@ -166,14 +163,14 @@ class NginxLogMetrics(Source):
                     rbytes, requests = vals
                     events.extend([
                         self.createEvent('ok',
-                                         'Nginx %s %s rbytes' % (field, key),
+                                         f'Nginx {field} {key} rbytes',
                                          rbytes,
-                                         prefix='%s.%s.rbytes' % (field, key),
+                                         prefix=f'{field}.{key}.rbytes',
                                          evtime=ts),
                         self.createEvent('ok',
-                                         'Nginx %s %s requests' % (field, key),
+                                         f'Nginx {field} {key} requests',
                                          requests,
-                                         prefix='%s.%s.requests' % (field, key),
+                                         prefix=f'{field}.{key}.requests',
                                          evtime=ts)
                     ])
 
@@ -215,7 +212,7 @@ class NginxLogMetrics(Source):
             fil=lambda l: l.split()[1].split('?')[0].replace('.', ',')
         )
 
-    def get(self):
+    async def get(self):
         self.rbytes = 0
         self.requests = 0
         self.st = {}
@@ -276,5 +273,5 @@ class NginxLog(Source):
 
         return self.createLog('nginx', d, t)
 
-    def get(self):
+    async def get(self):
         self.log.get_fn(self.got_eventlog, max_lines=self.max_lines)

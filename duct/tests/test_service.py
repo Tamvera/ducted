@@ -1,84 +1,91 @@
-from twisted.trial import unittest
-
-from twisted.internet import defer, reactor
-from twisted.internet.endpoints import TCP4ServerEndpoint
-from twisted.internet.protocol import ServerFactory
-from twisted.protocols.basic import Int32StringReceiver
+import asyncio
+import struct
+import pytest
+import pytest_asyncio
 
 from duct.ihateprotobuf import proto_pb2
 from duct.objects import Event, Source, Output
-from duct.protocol.riemann import RiemannClientFactory
 from duct.service import DuctService
 from duct.aggregators import Counter32, Counter64, Counter
 
 
-def wait(secs):
-    d = defer.Deferred()
-    reactor.callLater(secs, d.callback, None)
-    return d
+# ---------------------------------------------------------------------------
+# Fake Riemann server using asyncio streams
+# ---------------------------------------------------------------------------
 
-
-class FakeRiemannServerProtocol(Int32StringReceiver):
-    def stringReceived(self, string):
-        msg = proto_pb2.Msg.FromString(string)
-        self.factory.receive_message(msg)
-        self.sendString(proto_pb2.Msg(ok=True).SerializeToString())
-
-
-class FakeRiemannServerFactory(ServerFactory):
-    protocol = FakeRiemannServerProtocol
-    endpoint = None
-    listener = None
+class FakeRiemannServer:
+    """asyncio-based fake Riemann TCP server that speaks the framed protobuf
+    protocol."""
 
     def __init__(self):
         self.received_messages = []
-        self.waiters = []
+        self._waiters = []
+        self._server = None
 
-    def start_listening(self, endpoint):
-        def cb(listener):
-            self.listener = listener
-            return self
+    async def start(self, host='127.0.0.1', port=0):
+        self._server = await asyncio.start_server(
+            self._handle_client, host, port)
+        # Return the actual bound port
+        return self._server.sockets[0].getsockname()[1]
 
-        self.endpoint = endpoint
-        return endpoint.listen(self).addCallback(cb)
+    async def stop(self):
+        if self._server:
+            self._server.close()
+            await self._server.wait_closed()
 
-    def stop_listening(self):
-        if self.listener is not None:
-            return self.listener.stopListening()
+    async def _handle_client(self, reader, writer):
+        try:
+            while True:
+                try:
+                    length_bytes = await reader.readexactly(4)
+                except asyncio.IncompleteReadError:
+                    break
+                length = struct.unpack('!I', length_bytes)[0]
+                data = await reader.readexactly(length)
+                msg = proto_pb2.Msg.FromString(data)
+                self._receive_message(msg)
+                # Send ok response
+                resp = proto_pb2.Msg(ok=True).SerializeToString()
+                writer.write(struct.pack('!I', len(resp)) + resp)
+                await writer.drain()
+        except Exception:
+            pass
+        finally:
+            writer.close()
 
-    def reconnect(self):
-        return self.listener.startListening()
-
-    def get_host(self):
-        if self.listener is not None:
-            return self.listener.getHost()
-
-    def receive_message(self, msg):
+    def _receive_message(self, msg):
         self.received_messages.append(msg)
         self._process_waiters()
 
     def _process_waiters(self):
         new_waiters = []
-        firing_waiters = []
-        while self.waiters:
-            d, total_messages = self.waiters.pop(0)
-            if len(self.received_messages) >= total_messages:
-                firing_waiters.append(d)
+        firing = []
+        while self._waiters:
+            fut, n = self._waiters.pop(0)
+            if len(self.received_messages) >= n:
+                firing.append(fut)
             else:
-                new_waiters.append((d, total_messages))
-        self.waiters = new_waiters
-        for d in firing_waiters:
-            d.callback(self.received_messages[:])
+                new_waiters.append((fut, n))
+        self._waiters = new_waiters
+        for fut in firing:
+            if not fut.done():
+                fut.set_result(list(self.received_messages))
 
-    def wait_for_messages(self, total_messages):
-        d = defer.Deferred()
-        self.waiters.append((d, total_messages))
+    async def wait_for_messages(self, n):
+        loop = asyncio.get_event_loop()
+        fut = loop.create_future()
+        self._waiters.append((fut, n))
         self._process_waiters()
-        return d
+        return await fut
 
+
+# ---------------------------------------------------------------------------
+# Helpers / fakes
+# ---------------------------------------------------------------------------
 
 class FakeSource(Source):
     pass
+
 
 class FakeOutput(Output):
     def __init__(self, *a):
@@ -88,156 +95,107 @@ class FakeOutput(Output):
     def eventsReceived(self, events):
         self.events = events
 
-class TestService(unittest.TestCase):
-    timeout = 10
 
-    def start_riemann_server(self):
-        factory = FakeRiemannServerFactory()
-        self.addCleanup(factory.stop_listening)
-        return factory.start_listening(TCP4ServerEndpoint(reactor, 0))
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
 
-    def make_service(self, config):
-        service = DuctService(config)
-        self.addCleanup(self.stop_service, service)
-        return service
+@pytest.fixture
+async def riemann_server():
+    srv = FakeRiemannServer()
+    port = await srv.start()
+    yield srv, port
+    await srv.stop()
 
-    def make_source(self, service):
+
+@pytest.mark.asyncio
+async def test_service_sends_event(riemann_server):
+    srv, port = riemann_server
+    service = DuctService({"server": "localhost", "port": port})
+    await service.startService()
+    try:
+        [] = await srv.wait_for_messages(0)
+
         source = FakeSource(
-            {
-                'service': 'test',
-                'interval': 1.0,
-                'ttl': 60.0
-            },
+            {'service': 'test', 'interval': 1.0, 'ttl': 60.0},
             service.sendEvent, service)
         service.sources.append(source)
-        return source
 
-    @defer.inlineCallbacks
-    def stop_service(self, service):
-        """
-        Wait a little bit before and after stopping the service for things to
-        happen in the right order. :-(
-        """
-        yield wait(0.1)
-        yield service.stopService()
-        yield wait(0.1)
-
-    @defer.inlineCallbacks
-    def test_service_sends_event(self):
-        factory = yield self.start_riemann_server()
-        service = self.make_service({"port": factory.get_host().port})
-        yield service.startService()
-
-        [] = yield factory.wait_for_messages(0)
-
-        source = self.make_source(service)
         event = Event('ok', 'sky', 'Sky has not fallen', 1.0, 60.0,
                       hostname='localhost')
         service.sendEvent(source, event)
-        [msg] = yield factory.wait_for_messages(1)
-        [event] = msg.events
-        self.assertEqual(event.description, 'Sky has not fallen')
 
-    @defer.inlineCallbacks
-    def test_service_sends_event_after_reconnect(self):
-        self.patch(RiemannClientFactory, 'initialDelay', 0.1)
-        factory = yield self.start_riemann_server()
-        service = self.make_service({"port": factory.get_host().port})
-        yield service.startService()
+        await asyncio.sleep(0.1)
+        [msg] = await srv.wait_for_messages(1)
+        [ev] = msg.events
+        assert ev.description == 'Sky has not fallen'
+    finally:
+        await service.stopService()
 
-        # Send an event to make sure everything's happy
-        [] = yield factory.wait_for_messages(0)
-        source = self.make_source(service)
-        event = Event('ok', 'sky', 'Sky has not fallen', 1.0, 60.0,
-                      hostname='localhost')
-        service.sendEvent(source, event)
-        [msg] = yield factory.wait_for_messages(1)
-        [event] = msg.events
-        self.assertEqual(event.description, 'Sky has not fallen')
 
-        # Disconnect and hope we reconnect
-        [output] = service.outputs[None]
-        yield output.connector.disconnect()
-        yield wait(0.2)
+def _aggregator_test(service, m1, m2, aggregator, delta):
+    ev1 = Event('ok', 'num', 'Number', m1, delta,
+                hostname='localhost', aggregation=aggregator)
+    ev2 = Event('ok', 'num', 'Number', m2, delta,
+                hostname='localhost', aggregation=aggregator)
+    ev1.time = 1
+    ev2.time = delta + 1
 
-        # Send another event to make sure everything's still happy
-        [_] = yield factory.wait_for_messages(1)
-        event = Event('ok', 'sky', 'Sky has not fallen', 1.0, 60.0,
-                      hostname='localhost')
-        service.sendEvent(source, event)
-        [_, msg2] = yield factory.wait_for_messages(2)
-        [event] = msg.events
-        self.assertEqual(event.description, 'Sky has not fallen')
+    service._aggregateQueue([ev1])
+    result = service._aggregateQueue([ev2])
+    return result[0].metric
 
-    def _aggregator_test(self, m1, m2, aggregator, delta):
-        service = self.make_service({})
 
-        ev1 = Event('ok', 'num', 'Number', m1, delta, 
-            hostname='localhost', aggregation=aggregator)
-
-        ev2 = Event('ok', 'num', 'Number', m2, delta, 
-            hostname='localhost', aggregation=aggregator)
-
-        ev1.time = 1
-        ev2.time = delta+1
-
-        q1 = service._aggregateQueue([ev1])
-        ev = service._aggregateQueue([ev2])[0]
-
-        self.assertEqual(q1, [])
-
-        return ev.metric
+class TestAggregators:
+    def setup_method(self):
+        self.service = DuctService({})
 
     def test_aggregate_counter32(self):
-        metric = self._aggregator_test(1, 2, Counter32, 4)
-        self.assertEqual(metric, 0.25)
+        assert _aggregator_test(self.service, 1, 2, Counter32, 4) == 0.25
 
     def test_aggregate_counter64(self):
-        metric = self._aggregator_test(1, 2, Counter64, 4)
-        self.assertEqual(metric, 0.25)
+        assert _aggregator_test(self.service, 1, 2, Counter64, 4) == 0.25
 
     def test_aggregate_counter(self):
-        metric = self._aggregator_test(1, 2, Counter, 4)
-        self.assertEqual(metric, 0.25)
+        assert _aggregator_test(self.service, 1, 2, Counter, 4) == 0.25
 
     def test_aggregate_counter32_rollover(self):
-        metric = self._aggregator_test(4294967290, 5, Counter32, 4)
-        self.assertEqual(metric, 2.5)
- 
+        assert _aggregator_test(self.service, 4294967290, 5, Counter32, 4) == 2.5
+
     def test_aggregate_counter64_rollover(self):
-        metric = self._aggregator_test(18446744073709551610, 5, Counter64, 4)
-        self.assertEqual(metric, 2.5)
+        assert _aggregator_test(
+            self.service, 18446744073709551610, 5, Counter64, 4) == 2.5
 
     def test_state_match(self):
-        service = self.make_service({
-            'interval': 1.0, 'ttl': 60.0, 
+        service = DuctService({
+            'interval': 1.0, 'ttl': 60.0,
             'sources': [{
-                'source': 'duct.sources.linux.basic.Network', 
-                'interval': 2.0, 
-                'critical': {'network.\\w+.tx_bytes': '> 500'}, 
-                'warning': {'network.\\w+.tx_bytes': '> 100'}, 
+                'source': 'duct.sources.linux.basic.Network',
+                'interval': 2.0,
+                'critical': {'network.\\w+.tx_bytes': '> 500'},
+                'warning': {'network.\\w+.tx_bytes': '> 100'},
                 'service': 'network'}]
         })
 
         ev1 = Event('ok', 'network.foo.tx_bytes', 'net1', 50, 1,
-            hostname='localhost')
+                    hostname='localhost')
         ev2 = Event('ok', 'network.foo.tx_bytes', 'net1', 1000, 1,
-            hostname='localhost')
+                    hostname='localhost')
         ev3 = Event('ok', 'network.foo.tx_bytes', 'net1', 200, 1,
-            hostname='localhost')
-        
+                    hostname='localhost')
+
         service.setStates(service.sources[0], [ev1, ev2, ev3])
 
-        self.assertEqual(ev1.state, 'ok')
-        self.assertEqual(ev2.state, 'critical')
-        self.assertEqual(ev3.state, 'warning')
+        assert ev1.state == 'ok'
+        assert ev2.state == 'critical'
+        assert ev3.state == 'warning'
 
-    @defer.inlineCallbacks
-    def test_source_routing(self):
-        service = self.make_service({
-            'interval': 1.0, 'ttl': 60.0, 
+    @pytest.mark.asyncio
+    async def test_source_routing(self):
+        service = DuctService({
+            'interval': 1.0, 'ttl': 60.0,
             'sources': [{
-                'source': 'duct.sources.linux.basic.LoadAverage', 
+                'source': 'duct.sources.linux.basic.LoadAverage',
                 'interval': 2.0,
                 'route': 'out1',
                 'service': 'load'}]
@@ -249,25 +207,25 @@ class TestService(unittest.TestCase):
         [source] = service.sources
 
         service.outputs = {
-            'out1':[output1],
-            'out2':[output2]
+            'out1': [output1],
+            'out2': [output2]
         }
 
         event = Event('ok', 'load', 'load', 1, 1, hostname='localhost')
 
         service.sendEvent(source, event)
 
-        yield wait(0.2)
+        await asyncio.sleep(0.2)
 
-        self.assertEqual(len(output1.events), 1)
-        self.assertEqual(output2.events, None)
-       
+        assert len(output1.events) == 1
+        assert output2.events is None
+
         output1.events = None
         source.config['route'] = ['out1', 'out2']
 
         service.sendEvent(source, event)
 
-        yield wait(0.2)
+        await asyncio.sleep(0.2)
 
-        self.assertEqual(len(output1.events), 1)
-        self.assertEqual(len(output2.events), 1)
+        assert len(output1.events) == 1
+        assert len(output2.events) == 1

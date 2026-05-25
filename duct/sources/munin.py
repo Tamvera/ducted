@@ -6,56 +6,60 @@
 
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
-from zope.interface import implementer
+import asyncio
 
-from twisted.internet import defer, reactor
-from twisted.protocols.basic import LineReceiver
-from twisted.internet.protocol import ClientCreator
+from zope.interface import implementer
 
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 from duct.aggregators import Counter, Counter32
 
-class MuninProtocol(LineReceiver):
-    """MuninProtocol - provides a line receiver protocol for making requests
-    to munin-node
 
-    Requests must be made sequentially
-    """
-    delimiter = '\n'
-    def __init__(self):
-        self.ready = False
-        self.buf = []
-        self.d = None
-        self.clist = None
+class MuninClient:
+    """asyncio-based munin-node client"""
 
-    def lineReceived(self, line):
-        if line.startswith('#'):
-            return
+    def __init__(self, host, port):
+        self.host = host
+        self.port = port
+        self.reader = None
+        self.writer = None
 
-        if self.d and (not self.d.called):
-            if self.clist:
+    async def connect(self):
+        """Open connection to munin-node."""
+        self.reader, self.writer = await asyncio.open_connection(
+            self.host, self.port)
+        # Read the banner line
+        await self.reader.readline()
+
+    async def send_command(self, command, multiline=False):
+        """Send a command to munin-node and return the response."""
+        self.writer.write((command + '\n').encode())
+        await self.writer.drain()
+
+        if multiline:
+            lines = []
+            while True:
+                line = (await self.reader.readline()).decode().rstrip('\n')
+                if line.startswith('#'):
+                    continue
                 if line == '.':
-                    buf = self.buf
-                    self.buf = []
-                    self.d.callback(buf)
-                else:
-                    self.buf.append(line)
-            else:
-                self.d.callback(line)
+                    break
+                lines.append(line)
+            return lines
+        else:
+            while True:
+                line = (await self.reader.readline()).decode().rstrip('\n')
+                if not line.startswith('#'):
+                    return line
 
-    def disconnect(self):
-        """Disconnect from transport
-        """
-        return self.transport.loseConnection()
-
-    def sendCommand(self, command, clist=False):
-        """Send command to munin
-        """
-        self.d = defer.Deferred()
-        self.clist = clist
-        self.sendLine(command)
-        return self.d
+    async def disconnect(self):
+        """Close connection to munin-node."""
+        if self.writer:
+            self.writer.close()
+            try:
+                await self.writer.wait_closed()
+            except Exception:
+                pass
 
 
 @implementer(IDuctSource)
@@ -75,27 +79,22 @@ class MuninNode(Source):
                                              munin plugin keys
     """
 
-    def _connect_munin(self):
+    async def get(self):
         host = self.config.get('host', 'localhost')
         port = int(self.config.get('port', 4949))
 
-        creator = ClientCreator(reactor, MuninProtocol)
-        return creator.connectTCP(host, port)
+        client = MuninClient(host, port)
+        await client.connect()
 
-    @defer.inlineCallbacks
-    def get(self):
-        proto = yield self._connect_munin()
+        # Announce capabilities
+        await client.send_command('cap multigraph')
 
-        # Announce our capabilities
-        yield proto.sendCommand('cap multigraph')
-
-        listout = yield proto.sendCommand('list')
+        listout = await client.send_command('list')
         plug_list = listout.split()
         events = []
 
         for plug in plug_list:
-            # Retrive the configuration for this plugin
-            config = yield proto.sendCommand('config %s' % plug, True)
+            config = await client.send_command(f'config {plug}', True)
             plugin_config = {}
             for r in config:
                 name, val = r.split(' ', 1)
@@ -103,31 +102,29 @@ class MuninNode(Source):
                     metric, key = name.split('.')
 
                     if key in ['type', 'label', 'min', 'info']:
-                        plugin_config['%s.%s.%s' % (plug, metric, key)] = val
+                        plugin_config[f'{plug}.{metric}.{key}'] = val
 
                 else:
                     if name == 'graph_category':
-                        plugin_config['%s.category' % plug] = val
+                        plugin_config[f'{plug}.category'] = val
 
-            category = plugin_config.get('%s.category' % plug, 'system')
+            category = plugin_config.get(f'{plug}.category', 'system')
 
-            # Retrieve the metrics
-            metrics = yield proto.sendCommand('fetch %s' % plug, True)
+            metrics = await client.send_command(f'fetch {plug}', True)
             for m in metrics:
                 name, val = m.split(' ', 1)
                 if name != 'multigraph':
                     metric, key = name.split('.')
-                    base = '%s.%s' % (plug, metric)
-                    m_type = plugin_config.get('%s.type' % base, 'GAUGE')
+                    base = f'{plug}.{metric}'
+                    m_type = plugin_config.get(f'{base}.type', 'GAUGE')
 
                     try:
                         val = float(val)
-                    except:
+                    except ValueError:
                         continue
 
-                    base = '%s.%s' % (plug, metric)
-                    info = plugin_config.get('%s.info' % base, base)
-                    prefix = '%s.%s' % (category, base)
+                    info = plugin_config.get(f'{base}.info', base)
+                    prefix = f'{category}.{base}'
 
                     if m_type == 'COUNTER':
                         events.append(self.createEvent('ok', info, val,
@@ -141,6 +138,6 @@ class MuninNode(Source):
                         events.append(self.createEvent('ok', info, val,
                                                        prefix=prefix))
 
-        yield proto.disconnect()
+        await client.disconnect()
 
-        defer.returnValue(events)
+        return events

@@ -15,9 +15,10 @@ def unpack_address(u):
 
     if addrtype == 1:
         address = u.unpack_fopaque(4)
-
-    if addrtype == 2:
+    elif addrtype == 2:
         address = u.unpack_fopaque(16)
+    else:
+        address = None
 
     return address
 
@@ -37,4 +38,4 @@ class IPv4Address(object):
         return str(self)
 
     def __repr__(self):
-        return "<IPv4Address ip=\"%s\">" % str(self)
+        return f'<IPv4Address ip="{str(self)}">'

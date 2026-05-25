@@ -6,16 +6,16 @@
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
 
+import logging
 import os
 
 from zope.interface import implementer
 
-from twisted.internet import defer
-from twisted.python import log
-
+from duct.aggregators import Counter
 from duct.interfaces import IDuctSource
 from duct.objects import Source
-from duct.aggregators import Counter
+
+log = logging.getLogger(__name__)
 
 
 @implementer(IDuctSource)
@@ -46,29 +46,26 @@ class Postfix(Source):
         self.paths = ['active', 'deferred', 'maildrop', 'incoming', 'corrupt',
                       'hold', 'bounce']
 
-    @defer.inlineCallbacks
-    def get(self):
+    async def get(self):
         events = []
         for queue in self.paths:
             abspath = os.path.join(self.spool, queue)
 
-            out, err, code = yield self.fork(
+            out, err, code = await self.fork(
                 '/bin/sh',
                 args=('-c',
-                      '"/bin/find %s -type f | /usr/bin/wc -l"' % abspath,)
+                      f'"/bin/find {abspath} -type f | /usr/bin/wc -l"',)
             )
 
             if code == 0:
                 val = int(out.strip('\n'))
-
                 events.extend([
-                    self.createEvent('ok', '%s queue length' % queue, val,
-                                     prefix='%s.value' % queue),
+                    self.createEvent('ok', f'{queue} queue length', val,
+                                     prefix=f'{queue}.value'),
                     self.createEvent('ok', 'Queue rate', val,
-                                     prefix='%s.rate' % queue,
+                                     prefix=f'{queue}.rate',
                                      aggregation=Counter)
                 ])
-
             else:
-                log.msg('Error running %s' % repr(err))
-        defer.returnValue(events)
+                log.warning('Error running %s', repr(err))
+        return events

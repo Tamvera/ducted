@@ -5,345 +5,186 @@
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
 
+import base64
 import json
 import time
 import os
+import asyncio
+import logging
 
-try:
-    from StringIO import StringIO
-except ImportError:
-    from io import StringIO
+import aiohttp
 
-from zope.interface import implementer
-
-from twisted.internet import reactor, protocol, defer, error
-from twisted.web.http_headers import Headers
-from twisted.web.iweb import IBodyProducer
-from twisted.web.client import Agent
-from twisted.names import client
-from twisted.python import log
-
-from twisted.internet.endpoints import clientFromString
+log = logging.getLogger(__name__)
 
 
-def wait(msecs):
-    """Simple deferred delay function
-    """
-    d = defer.Deferred()
-    reactor.callLater(msecs/1000.0, d.callback, None)
-    return d
+async def wait(msecs):
+    """Async delay in milliseconds"""
+    await asyncio.sleep(msecs / 1000.0)
 
-class SocketyAgent(Agent):
-    """HTTP agent for connecting to UNIX sockets
-    """
-    def __init__(self, react, path, **kwargs):
-        Agent.__init__(self, react, **kwargs)
-        self.path = path
-
-    def _getEndpoint(self, *_a):
-        return clientFromString(reactor, self.path)
 
 class Timeout(Exception):
-    """
-    Raised to notify that an operation exceeded its timeout.
-    """
+    """Raised when an operation exceeds its timeout."""
+
 
 def reverseNameFromIPAddress(address):
-    """Returns PTR record for IP
-    """
+    """Returns PTR record name for IP address"""
     return '.'.join(reversed(address.split('.'))) + '.in-addr.arpa'
 
+
 class Resolver(object):
-    """Helper class for DNS resolution
-    """
+    """Helper class for DNS resolution with caching"""
 
     def __init__(self):
         self.recs = {}
-        self.resolver = client.getResolver()
 
-    def reverse(self, ip):
-        """Perform a reverse lookup on `ip`
-        """
-        def _ret(result, ip):
-            host = ip
-            if isinstance(result, tuple):
-                answers, _, _ = result
-                if isinstance(answers, list):
-                    ttl = answers[0].payload.ttl
-                    host = answers[0].payload.name.name
-                    self.recs[ip] = (host, ttl, time.time())
-
-            return host
-
+    async def reverse(self, ip):
+        """Perform a reverse lookup on `ip`"""
         if ip in self.recs:
             host, ttl, ti = self.recs[ip]
-
             if (time.time() - ti) < ttl:
-                return defer.maybeDeferred(lambda x: x, host)
-
-        return self.resolver.lookupPointer(
-            name=reverseNameFromIPAddress(address=ip)
-        ).addCallback(_ret, ip).addErrback(_ret, ip)
-
-class BodyReceiver(protocol.Protocol):
-    """ Simple buffering consumer for body objects """
-    def __init__(self, finished):
-        self.finished = finished
-        self.data = StringIO()
-
-    def dataReceived(self, data):
-        self.data.write(data.decode())
-
-    def connectionLost(self, *_r):
-        self.data.seek(0)
-        self.finished.callback(self.data)
-
-@implementer(IBodyProducer)
-class StringProducer(object):
-    """String producer for writing to HTTP requests
-    """
-    def __init__(self, body):
-        self.body = body
-        self.length = len(body)
-
-    def startProducing(self, consumer):
-        """Start writing content to consumer
-        """
-        consumer.write(self.body)
-        return defer.succeed(None)
-
-    def pauseProducing(self):
-        """Producing paused
-        """
-        pass
-
-    def stopProducing(self):
-        """Producing stopped
-        """
-        pass
-
-class ProcessProtocol(protocol.ProcessProtocol):
-    """ProcessProtocol which supports timeouts"""
-    def __init__(self, deferred, timeout):
-        self.timeout = timeout
-        self.timer = None
-
-        self.deferred = deferred
-        self.outBuf = StringIO()
-        self.errBuf = StringIO()
-
-    def outReceived(self, data):
-        self.outBuf.write(data.decode())
-
-    def errReceived(self, data):
-        self.errBuf.write(data.decode())
-
-    def processEnded(self, reason):
-        if self.timer and (not self.timer.called):
-            self.timer.cancel()
-
-        out = self.outBuf.getvalue()
-        err = self.errBuf.getvalue()
-
-        code = reason.value.exitCode
-
-        if reason.value.signal:
-            self.deferred.errback(reason)
-        else:
-            self.deferred.callback((out, err, code))
-
-    def connectionMade(self):
-        @defer.inlineCallbacks
-        def killIfAlive():
-            """Terminate after timeout if still alive
-            """
-            try:
-                yield self.transport.signalProcess('KILL')
-                log.msg('Killed source proccess: Timeout %s exceeded'
-                        % self.timeout)
-            except error.ProcessExitedAlready:
-                pass
-
-        self.timer = reactor.callLater(self.timeout, killIfAlive)
-
-def fork(executable, args=(), env={}, path=None, timeout=3600):
-    """fork
-    Provides a deferred wrapper function with a timeout function
-
-    :param executable: Executable
-    :type executable: str.
-    :param args: Tupple of arguments
-    :type args: tupple.
-    :param env: Environment dictionary
-    :type env: dict.
-    :param timeout: Kill the child process if timeout is exceeded
-    :type timeout: int.
-    """
-    de = defer.Deferred()
-    proc = ProcessProtocol(de, timeout)
-    reactor.spawnProcess(proc, executable, (executable,)+tuple(args), env,
-                         path)
-    return de
-
-try:
-    from twisted.internet.ssl import ClientContextFactory
-
-    class WebClientContextFactory(ClientContextFactory):
-        """SSL Context factory
-        """
-        def getContext(self, *_a):
-            return ClientContextFactory.getContext(self)
-    SSL = True
-except:
-    SSL = False
-
-try:
-    from twisted.web import client as twclient
-    # pylint: disable=W0212
-    twclient._HTTP11ClientFactory.noisy = False
-    twclient.HTTPClientFactory.noisy = False
-except:
-    pass
-
-class HTTPRequest(object):
-    """Helper class for creating HTTP requests.
-       Accepts a `timeout` to cancel requests which take too long
-    """
-    def __init__(self, timeout=120):
-        self.timeout = timeout
-        self.timedout = None
-
-    def abort_request(self, request):
-        """Called to abort request on timeout"""
-        self.timedout = True
-        if not request.called:
-            try:
-                request.cancel()
-            except error.AlreadyCancelled:
-                return
-
-    @defer.inlineCallbacks
-    def response(self, request):
-        """Response received
-        """
-        if request.length:
-            de = defer.Deferred()
-            request.deliverBody(BodyReceiver(de))
-            body = yield de
-            body = body.read()
-        else:
-            body = ""
-
-        if (request.code < 200) or (request.code > 299):
-            raise Exception((request.code, body))
-
-        defer.returnValue(body)
-
-    def request(self, url, method='GET', headers={}, data=None, socket=None,
-                follow_redirect=False):
-        """Perform an HTTP request
-        """
-        self.timedout = False
-
-        if socket:
-            agent = SocketyAgent(reactor, socket)
-        else:
-            if url[:5] == 'https':
-                if SSL:
-                    agent = Agent(reactor, WebClientContextFactory())
-                else:
-                    raise Exception('HTTPS requested but not supported')
-            else:
-                agent = Agent(reactor)
-
-        request = agent.request(method.encode(), url.encode(),
-                                Headers(headers),
-                                StringProducer(data) if data else None)
-
-        if self.timeout:
-            timer = reactor.callLater(self.timeout, self.abort_request,
-                                      request)
-
-            def timeoutProxy(request):
-                """Wrapper function to time-out requests
-                """
-                if timer.active():
-                    timer.cancel()
-
-                if follow_redirect and (request.code in (301, 302,)):
-                    location = request.headers.getRawHeaders('location')
-                    url = request.request.absoluteURI
-                    if location:
-                        if not location[0].startswith("http"):
-                            # Well this isn't really allowed
-                            if location[0].startswith("/"):
-                                hp = '/'.join(url.split('/')[:3])
-                                url = hp + location[0]
-                            else:
-                                url = url.rstrip('/') + '/' + location[0]
-                        else:
-                            url = location[0]
-
-                        log.msg("Redirecting to %s" % url)
-
-                        return self.request(url, method=method, headers=headers,
-                                            data=data, socket=socket,
-                                            follow_redirect=follow_redirect)
-                    else:
-                        raise Exception("Server responded with %s code but no"
-                                        " location header" % request.code)
-
-                return self.response(request)
-
-            def requestAborted(failure):
-                """Request was aborted due to timeout
-                """
-                if timer.active():
-                    timer.cancel()
-
-                failure.trap(defer.CancelledError,
-                             error.ConnectingCancelledError)
-
-                raise Timeout(
-                    "Request took longer than %s seconds" % self.timeout)
-
-            request.addCallback(timeoutProxy).addErrback(requestAborted)
-        else:
-            request.addCallback(self.response)
-
-        return request
-
-
-    def getBody(self, url, method='GET', headers={}, data=None, socket=None):
-        """Make an HTTP request and return the body
-        """
-
-        if 'User-Agent' not in headers:
-            headers['User-Agent'] = ['Ductd/1']
-
-        return self.request(url, method, headers, data, socket)
-
-    @defer.inlineCallbacks
-    def getJson(self, url, method='GET', headers={}, data=None, socket=None):
-        """Fetch a JSON result via HTTP
-        """
-        if 'Content-Type' not in headers:
-            headers['Content-Type'] = ['application/json']
-
-        body = yield self.getBody(url, method, headers, data, socket)
+                return host
 
         try:
-            if not body:
-                defer.returnValue({})
-            response = json.loads(body)
-        except ValueError:
-            raise ValueError("Response was not JSON: %s" % repr(body))
+            loop = asyncio.get_event_loop()
+            results = await loop.getaddrinfo(
+                reverseNameFromIPAddress(ip), None,
+                type=asyncio.socket.SOCK_DGRAM
+            )
+            if results:
+                host = results[0][4][0]
+                self.recs[ip] = (host, 300, time.time())
+                return host
+        except Exception:
+            pass
 
-        defer.returnValue(response)
+        return ip
+
+
+async def fork(executable, args=(), env=None, path=None, timeout=3600):
+    """Execute a subprocess and return (stdout, stderr, returncode).
+
+    :param executable: Path to executable
+    :param args: Tuple of arguments
+    :param env: Environment dictionary (None inherits from parent)
+    :param path: Working directory
+    :param timeout: Kill process if timeout exceeded (seconds)
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            executable, *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env or None,
+            cwd=path,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout
+            )
+        except asyncio.TimeoutError as exc:
+            proc.kill()
+            await proc.communicate()
+            log.warning('Killed source process: Timeout %s exceeded', timeout)
+            raise Timeout(
+                f"Process took longer than {timeout} seconds") from exc
+
+        return stdout.decode(), stderr.decode(), proc.returncode
+
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"Executable not found: {executable}") from exc
+
+
+def _make_auth_headers(user, password, headers):
+    """Add Basic auth header if credentials provided"""
+    if user:
+        token = base64.b64encode(
+            f'{user}:{password}'.encode()
+        ).decode()
+        headers['Authorization'] = 'Basic ' + token
+    return headers
+
+
+class HTTPRequest(object):
+    """Helper class for async HTTP requests via aiohttp.
+
+    :param timeout: Request timeout in seconds (default: 120)
+    """
+
+    def __init__(self, timeout=120):
+        self.timeout = timeout
+
+    def _make_connector(self, socket=None):
+        if socket:
+            return aiohttp.UnixConnector(path=socket)
+        return None
+
+    async def getBody(self, url, method='GET', headers=None, data=None,
+                      socket=None, follow_redirect=True):
+        """Make an HTTP request and return the response body as a string.
+
+        :param url: URL to request
+        :param method: HTTP method (default: GET)
+        :param headers: Dict of headers
+        :param data: Request body bytes or str
+        :param socket: Unix socket path for local HTTP
+        :param follow_redirect: Follow 301/302 redirects (default: True)
+        """
+        if headers is None:
+            headers = {}
+
+        if 'User-Agent' not in headers:
+            headers['User-Agent'] = 'Ductd/2'
+
+        connector = self._make_connector(socket)
+
+        timeout = aiohttp.ClientTimeout(total=self.timeout)
+
+        if isinstance(data, str):
+            data = data.encode()
+
+        try:
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout,
+            ) as session:
+                async with session.request(
+                    method, url,
+                    headers=headers,
+                    data=data,
+                    allow_redirects=follow_redirect,
+                    ssl=False if url.startswith('https') else None,
+                ) as response:
+                    if response.status < 200 or response.status > 299:
+                        body = await response.text()
+                        raise OSError((response.status, body))
+                    return await response.text()
+
+        except aiohttp.ServerTimeoutError as exc:
+            raise Timeout(
+                f"Request took longer than {self.timeout} seconds") from exc
+
+    async def getJson(self, url, method='GET', headers=None, data=None,
+                      socket=None):
+        """Fetch a JSON result via HTTP"""
+        if headers is None:
+            headers = {}
+
+        if 'Content-Type' not in headers:
+            headers['Content-Type'] = 'application/json'
+
+        body = await self.getBody(url, method, headers, data, socket)
+
+        if not body:
+            return {}
+
+        try:
+            return json.loads(body)
+        except ValueError as exc:
+            raise ValueError(f"Response was not JSON: {repr(body)}") from exc
+
 
 class PersistentCache(object):
-    """A very basic dictionary cache abstraction. Not to be used
-    for large amounts of data or high concurrency"""
+    """A basic dictionary cache backed by a JSON file."""
 
     def __init__(self, location='/var/lib/duct/cache'):
         self.store = {}
@@ -354,32 +195,24 @@ class PersistentCache(object):
     def _changed(self):
         if os.path.exists(self.location):
             mtime = os.stat(self.location).st_mtime
-
             return self.mtime != mtime
-        else:
-            return False
+        return False
 
     def _acquire_cache(self):
         try:
-            cache_file = open(self.location, 'r')
-        except IOError:
+            with open(self.location, 'r', encoding='utf-8') as f:
+                return json.loads(f.read())
+        except (IOError, OSError):
             return {}
 
-        cache = json.loads(cache_file.read())
-        cache_file.close()
-        return cache
-
     def _write_cache(self, data):
-        cache_file = open(self.location, 'w')
-        cache_file.write(json.dumps(data))
-        cache_file.close()
+        with open(self.location, 'w', encoding='utf-8') as f:
+            f.write(json.dumps(data))
 
     def _persist(self):
         cache = self._acquire_cache()
-
         for key, val in self.store.items():
             cache[key] = val
-
         self._write_cache(cache)
 
     def _read(self):
@@ -389,26 +222,18 @@ class PersistentCache(object):
 
     def _remove_key(self, key):
         cache = self._acquire_cache()
-        if key in cache:
-            if key in cache:
-                cache.pop(key)
-            if key in self.store:
-                self.store.pop(key)
-            self._write_cache(cache)
+        cache.pop(key, None)
+        self.store.pop(key, None)
+        self._write_cache(cache)
 
     def expire(self, age):
         """Expire any items in the cache older than `age` seconds"""
         now = time.time()
         cache = self._acquire_cache()
-
         expired = [key for key, val in cache.items() if (now - val[0]) > age]
-
         for key in expired:
-            if key in cache:
-                cache.pop(key)
-            if key in self.store:
-                self.store.pop(key)
-
+            cache.pop(key, None)
+            self.store.pop(key, None)
         self._write_cache(cache)
 
     def set(self, key, val):
@@ -417,20 +242,18 @@ class PersistentCache(object):
         self._persist()
 
     def get(self, k):
-        """Returns key contents, and modify time"""
+        """Returns (timestamp, value) tuple for key, or None"""
         if self._changed():
             self._read()
-
         if k in self.store:
             return tuple(self.store[k])
-        else:
-            return None
+        return None
 
     def contains(self, k):
         """Return True if key `k` exists"""
         if self._changed():
             self._read()
-        return k in self.store.keys()
+        return k in self.store
 
     def delete(self, k):
         """Remove key `k` from the cache"""

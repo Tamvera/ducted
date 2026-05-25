@@ -5,14 +5,15 @@
 
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
+import logging
+
 from zope.interface import implementer
 
-from twisted.internet import defer
-from twisted.python import log
-
+from duct.aggregators import Counter
 from duct.interfaces import IDuctSource
 from duct.objects import Source
-from duct.aggregators import Counter
+
+log = logging.getLogger(__name__)
 
 
 @implementer(IDuctSource)
@@ -43,24 +44,20 @@ class Queues(Source):
 
         self.clipath = self.config.get('clipath', '/usr/bin/redis-cli')
 
-    @defer.inlineCallbacks
-    def get(self):
-
-        out, err, code = yield self.fork(self.clipath, args=('-n',
-                                                             str(self.db),
-                                                             'llen',
-                                                             self.queue,))
+    async def get(self):
+        out, err, code = await self.fork(self.clipath, args=('-n',
+                                                              str(self.db),
+                                                              'llen',
+                                                              self.queue,))
 
         if code == 0:
             val = int(out.strip('\n').split()[-1])
-
-            defer.returnValue([
-                self.createEvent('ok', '%s queue length' % self.queue, val),
+            return [
+                self.createEvent('ok', f'{self.queue} queue length', val),
                 self.createEvent('ok', 'Queue rate', val, prefix='rate',
                                  aggregation=Counter)
-            ])
-
+            ]
         else:
-            err = 'Error running %s: %s' % (self.clipath, repr(err))
-            log.msg(err)
-            defer.returnValue(self.createEvent('critical', err, None))
+            msg = f'Error running {self.clipath}: {repr(err)}'
+            log.warning(msg)
+            return self.createEvent('critical', msg, None)

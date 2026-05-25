@@ -7,7 +7,6 @@ load-plugins=
 jobs=2
 unsafe-load-any-extension=no
 extension-pkg-whitelist=
-optimize-ast=no
 msg-template={path}:{line}: [{msg_id}({symbol}), {obj}] {msg}
 
 [MESSAGES CONTROL]
@@ -16,18 +15,17 @@ msg-template={path}:{line}: [{msg_id}({symbol}), {obj}] {msg}
 # all. Valid levels: HIGH, INFERENCE, INFERENCE_FAILURE, UNDEFINED
 confidence=
 
-disable=R,import-star-module-level,old-octal-literal,oct-method,print-statement,unpacking-in-except,parameter-unpacking,backtick,old-raise-syntax,old-ne-operator,long-suffix,dict-view-method,dict-iter-method,metaclass-assignment,next-method-called,raising-string,indexing-exception,raw_input-builtin,long-builtin,file-builtin,execfile-builtin,coerce-builtin,cmp-builtin,buffer-builtin,basestring-builtin,apply-builtin,filter-builtin-not-iterating,using-cmp-argument,useless-suppression,range-builtin-not-iterating,suppressed-message,no-absolute-import,old-division,cmp-method,reload-builtin,zip-builtin-not-iterating,intern-builtin,unichr-builtin,reduce-builtin,standarderror-builtin,unicode-builtin,xrange-builtin,coerce-method,delslice-method,getslice-method,setslice-method,input-builtin,round-builtin,hex-method,nonzero-method,map-builtin-not-iterating,too-few-public-methods,invalid-name,broad-except,abstract-method,bare-except,eval-used,no-init,redefined-outer-name,dangerous-default-value,arguments-differ
+disable=R,import-star-module-level,useless-suppression,suppressed-message,too-few-public-methods,invalid-name,broad-except,abstract-method,bare-except,eval-used,no-init,redefined-outer-name,dangerous-default-value,arguments-differ
 
 
 [REPORTS]
 output-format=colorized
-files-output=no
 reports=yes
 evaluation=10.0 - ((float(5 * error + warning + refactor + convention) / statement) * 10)
 
 [TYPECHECK]
 ignore-mixin-members=yes
-ignored-modules=twisted.internet.reactor,zope.interface
+ignored-modules=zope.interface
 ignored-classes=optparse.Values,thread._local,_thread._local
 # List of members which are set dynamically and missed by pylint inference
 # system, and so shouldn't trigger E1101 when accessed. Python regular
@@ -43,7 +41,6 @@ logging-modules=logging
 max-line-length=80
 ignore-long-lines=^\s*(# )?<?https?://\S+>?$
 single-line-if-stmt=no
-no-space-check=trailing-comma,dict-separator
 max-module-lines=1000
 indent-string='    '
 indent-after-paren=4
@@ -120,4 +117,4 @@ max-public-methods=20
 max-bool-expr=5
 
 [EXCEPTIONS]
-overgeneral-exceptions=Exception
+overgeneral-exceptions=builtins.Exception

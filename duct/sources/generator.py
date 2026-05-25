@@ -32,7 +32,7 @@ class Function(Source):
 
     x = 0
 
-    def get(self):
+    async def get(self):
         self.x += self.config.get('dx', 0.1)
 
         val = eval(self.config.get('function', 'sin(x)'), {

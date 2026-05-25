@@ -9,12 +9,13 @@ import hashlib
 import time
 import socket
 import traceback
-
-from twisted.internet import task, defer
-from twisted.python import log
+import asyncio
+import logging
 
 from duct.utils import fork
 from duct.protocol import ssh
+
+log = logging.getLogger(__name__)
 
 
 class Event(object):
@@ -25,7 +26,7 @@ class Event(object):
 
     :param state: Some sort of string < 255 chars describing the state
     :param service: The service name for this event
-    :param description: A description for the event, ie. "My house is on fire!"
+    :param description: A description for the event
     :param metric: int or float metric for this event
     :param ttl: TTL (time-to-live) for this event
     :param tags: List of tag strings
@@ -57,24 +58,17 @@ class Event(object):
         self.aggregation = aggregation
         self.evtype = evtype
 
-        if evtime:
-            self.time = evtime
-        else:
-            self.time = time.time()
-        if hostname:
-            self.hostname = hostname
-        else:
-            self.hostname = socket.gethostbyaddr(socket.gethostname())[0]
+        self.time = evtime if evtime else time.time()
+        self.hostname = hostname if hostname else socket.gethostbyaddr(
+            socket.gethostname())[0]
 
     def eid(self):
-        """Return a unique identifier for this event
-        """
+        """Return a unique identifier for this event"""
         return self.hostname + '.' + self.service
 
     def __repr__(self):
-        ser = ['%s=%s' % (key, repr(val)) for key, val in dict(self).items()]
-
-        return "<Event %s>" % (', '.join(ser))
+        ser = [f'{key}={repr(val)}' for key, val in dict(self).items()]
+        return f"<Event {', '.join(ser)}>"
 
     def __iter__(self):
         obj = {
@@ -88,28 +82,22 @@ class Event(object):
             'type': self.evtype,
             'description': self.description,
         }
-
         if self.attributes:
             obj['attributes'] = self.attributes
-
         for key, val in obj.items():
             yield key, val
 
     def copyWithMetric(self, metric):
-        """Create a copy of this event with a different metric value
-        """
+        """Create a copy of this event with a different metric value"""
         return Event(self.state, self.service, self.description, metric,
                      self.ttl, self.tags, self.hostname, self.aggregation)
+
 
 class Output(object):
     """Output parent class
 
-    Outputs can inherit this object which provides a construct
-    for a working output
-
-    :param config: Dictionary config for this queue (usually read from the
-             yaml configuration)
-    :param duct: A DuctService object for interacting with the queue manager
+    :param config: Dictionary config for this queue
+    :param duct: A DuctService object
     """
     def __init__(self, config, duct):
         self.config = config
@@ -117,39 +105,27 @@ class Output(object):
         self.events = []
         self.maxsize = 0
 
-    def createClient(self):
-        """Deferred which sets up the output
-        """
-        pass
+    async def createClient(self):
+        """Coroutine that sets up the output connection"""
 
     def eventsReceived(self, events):
-        """Receives a list of events and queues them
-
-        Arguments:
-        events -- list of `duct.objects.Event`
-        """
-        # Make sure queue isn't oversized
+        """Receives a list of events and queues them"""
         if self.maxsize > 0:
-            if (self.maxsize < 1) or (len(self.events) < self.maxsize):
+            if len(self.events) < self.maxsize:
                 self.events.extend(events)
         else:
             self.events.extend(events)
 
-    def stop(self):
-        """Called when the service shuts down
-        """
-        pass
+    async def stop(self):
+        """Called when the service shuts down"""
+
 
 class Source(object):
     """Source parent class
 
-    Sources can inherit this object which provides a number of
-    utility methods.
-
-    :param config: Dictionary config for this queue (usually read from the
-             yaml configuration)
-    :param queueBack: A callback method to recieve a list of Event objects
-    :param duct: A DuctService object for interacting with the queue manager
+    :param config: Dictionary config for this queue
+    :param queueBack: A callback method to receive a list of Event objects
+    :param duct: A DuctService object
     """
 
     sync = False
@@ -159,8 +135,7 @@ class Source(object):
         self.config = config
         self.duct = duct
 
-        self.timer = task.LoopingCall(self.tick)
-        self.timerDeferred = None
+        self._loop_task = None
         self.attributes = None
 
         self.service = config['service']
@@ -190,9 +165,7 @@ class Source(object):
         self.running = False
 
     def _init_ssh(self):
-        """ Configure SSH client options
-        """
-
+        """Configure SSH client options"""
         self.ssh_host = self.config.get('ssh_host', self.hostname)
 
         self.known_hosts = self.config.get(
@@ -206,7 +179,6 @@ class Source(object):
         self.ssh_key = self.config.get(
             'ssh_key', self.duct.config.get('ssh_key', None))
 
-        # Not sure why you'd bother but maybe you've got a weird policy
         self.ssh_keypass = self.config.get(
             'ssh_keypass', self.duct.config.get('ssh_keypass', None))
 
@@ -219,15 +191,13 @@ class Source(object):
         self.ssh_port = self.config.get(
             'ssh_port', self.duct.config.get('ssh_port', 22))
 
-        # Verify config to see if we're good to go
-
         if not (self.ssh_key or self.ssh_keyfile or self.ssh_password):
-            raise Exception("To use SSH you must specify *one* of ssh_key,"
-                            " ssh_keyfile or ssh_password for this source"
-                            " check or globally")
+            raise ValueError("To use SSH you must specify *one* of ssh_key,"
+                             " ssh_keyfile or ssh_password for this source"
+                             " check or globally")
 
         if not self.ssh_user:
-            raise Exception("ssh_username must be set")
+            raise ValueError("ssh_username must be set")
 
         self.ssh_keydb = []
 
@@ -259,97 +229,91 @@ class Source(object):
     def _queueBack(self, caller):
         return lambda events: caller(self, events)
 
-    def start(self):
-        """Called when source is started
-        """
-        pass
+    async def start(self):
+        """Called when source is started"""
 
-    @defer.inlineCallbacks
-    def startTimer(self):
-        """Starts the timer for this source"""
-        yield defer.maybeDeferred(self.start)
-
-        self.timerDeferred = self.timer.start(self.inter)
+    async def startTimer(self):
+        """Starts the polling loop for this source"""
+        await self.start()
 
         if self.use_ssh and self.ssh_connector:
-            yield defer.maybeDeferred(self.ssh_client.connect)
+            await self.ssh_client.connect()
 
+        self._loop_task = asyncio.create_task(self._run_loop())
 
-    def stop(self):
-        """Called when source is stopped
-        """
-        pass
+    async def _run_loop(self):
+        """Async polling loop — fires tick() then repeats every inter secs."""
+        try:
+            while True:
+                await self.tick()
+                await asyncio.sleep(self.inter)
+        except asyncio.CancelledError:
+            pass
 
-    def stopTimer(self):
-        """Stops the timer for this source"""
-        self.timerDeferred = None
-        if self.timer.running:
-            self.timer.stop()
-        return defer.maybeDeferred(self.stop)
+    async def stop(self):
+        """Called when source is stopped"""
 
-    def fork(self, *a, **kw):
-        """Wrapper function to execute another process
+    async def stopTimer(self):
+        """Stops the polling loop for this source"""
+        if self._loop_task and not self._loop_task.done():
+            self._loop_task.cancel()
+            try:
+                await self._loop_task
+            except asyncio.CancelledError:
+                pass
+        self._loop_task = None
+        await self.stop()
 
-           Passes off to either ssh or local system based on whether
-           use_ssh is set
-        """
+    async def fork(self, *a, **kw):
+        """Execute a subprocess, via SSH if use_ssh is set"""
         if self.use_ssh:
-            return self.ssh_client.fork(*a, **kw)
+            return await self.ssh_client.fork(*a, **kw)
         else:
-            return fork(*a, **kw)
+            return await fork(*a, **kw)
 
-    @defer.inlineCallbacks
-    def _get(self):
+    async def _get(self):
         if self.use_ssh and not self.ssh:
-            event = yield defer.maybeDeferred(self.sshGet)
-
+            event = await self.sshGet()
         else:
-            event = yield defer.maybeDeferred(self.get)
+            event = await self._call_get()
 
         if self.config.get('debug', False):
-            log.msg("[%s] Tick: %s" % (self.config['service'], event))
+            log.debug("[%s] Tick: %s", self.config['service'], event)
 
-        defer.returnValue(event)
+        return event
 
-    @defer.inlineCallbacks
-    def tick(self):
-        """Called for every timer tick. Calls self.get which can be a deferred
-        and passes that result back to the queueBack method
+    async def _call_get(self):
+        """Call get()"""
+        return await self.get()
 
-        Returns a deferred"""
-
-        if self.sync:
-            if self.running:
-                defer.returnValue(None)
+    async def tick(self):
+        """Called for every timer tick. Calls get() and passes results."""
+        if self.sync and self.running:
+            return
 
         self.running = True
 
         try:
-            event = yield self._get()
+            event = await self._get()
             if event:
                 self.queueBack(event)
 
         except Exception as ex:
             if self.duct.config.get('debug'):
                 tb_lines = traceback.format_exc().splitlines()
-                header = "[%s] Unhandled error: %%s" % (self.service)
-                log.msg(header % tb_lines[0])
-                if len(tb_lines) > 1:
-                    for l in tb_lines[1:]:
-                        log.msg(l)
-
+                header = f"[{self.service}] Unhandled error: %s"
+                log.error(header, tb_lines[0])
+                for l in tb_lines[1:]:
+                    log.error(l)
             else:
-                log.msg("[%s] Unhandled error: %s" % (self.service, ex))
+                log.error("[%s] Unhandled error: %s", self.service, ex)
 
         self.running = False
 
     def createEvent(self, state, description, metric, prefix=None,
                     hostname=None, aggregation=None, evtime=None):
         """Creates an Event object from the Source configuration"""
-        if prefix:
-            service_name = self.service + "." + prefix
-        else:
-            service_name = self.service
+        service_name = (self.service + "." + prefix) if prefix else self.service
 
         return Event(state, service_name, description, metric, self.ttl,
                      hostname=hostname or self.hostname,
@@ -357,20 +321,18 @@ class Source(object):
                      evtime=evtime, tags=self.tags, attributes=self.attributes)
 
     def createLog(self, evtype, data, evtime=None, hostname=None):
-        """Creates an Event object from the Source configuration"""
-
+        """Creates a log-type Event object"""
         return Event(None, evtype, data, 0, self.ttl,
                      hostname=hostname or self.hostname, evtime=evtime,
                      tags=self.tags, evtype='log')
 
-    def get(self):
-        """Get method for source called every `self.inter`
-           Should return a list of `Event` objects or `None`
+    async def get(self):
+        """Get method called every `self.inter` seconds.
+        Should return a list of Event objects or None.
         """
         raise NotImplementedError()
 
-    def sshGet(self):
-        """Get method for source if use_ssh is enabled
-        """
+    async def sshGet(self):
+        """Get method used when use_ssh is enabled"""
         raise NotImplementedError(
             "This source does not implement SSH remote checks")

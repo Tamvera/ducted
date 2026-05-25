@@ -7,8 +7,6 @@
 """
 from zope.interface import implementer
 
-from twisted.internet import defer
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 
@@ -23,9 +21,8 @@ class StrongSwan(Source):
     """
     ssh = True
 
-    @defer.inlineCallbacks
-    def get(self):
-        out, _err, _code = yield self.fork('/usr/bin/sudo', args=(
+    async def get(self):
+        out, _err, _code = await self.fork('/usr/bin/sudo', args=(
             'ipsec', 'statusall'))
 
         connections = {}
@@ -65,11 +62,11 @@ class StrongSwan(Source):
         events = []
         for k, v in connections.items():
             if v['up']:
-                events.append(self.createEvent('ok', 'IPSec tunnel %s up' % k,
+                events.append(self.createEvent('ok', f'IPSec tunnel {k} up',
                                                1, prefix=k))
             else:
                 events.append(self.createEvent('critical',
-                                               'IPSec tunnel %s down' % k,
+                                               f'IPSec tunnel {k} down',
                                                0, prefix=k))
 
-        defer.returnValue(events)
+        return events

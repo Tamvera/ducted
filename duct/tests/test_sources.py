@@ -1,10 +1,11 @@
+import asyncio
 import json
-import socket
 import os
+import socket
 
-from twisted.trial import unittest
-from twisted.internet import defer, endpoints, reactor
-from twisted.web import server, static
+import aiohttp.web
+import pytest
+import pytest_asyncio
 
 from duct.sources.linux import basic, process, sensors
 from duct.sources import riak, nginx, network, apache, munin, haproxy
@@ -13,254 +14,86 @@ from duct.service import DuctService
 from duct.tests import globs
 
 
-class TestSources(unittest.TestCase):
-    def setUp(self):
-        self.duct = DuctService({})
+# ---------------------------------------------------------------------------
+# Fixtures / helpers
+# ---------------------------------------------------------------------------
 
-    def skip_if_no_hostname(self):
+@pytest.fixture
+def duct_service():
+    return DuctService({})
+
+
+def _qb(source, events):
+    pass
+
+
+def skip_if_no_hostname():
+    try:
+        socket.gethostbyaddr(socket.gethostname())
+    except socket.herror:
+        pytest.skip('Unable to get local hostname.')
+
+
+# ---------------------------------------------------------------------------
+# Linux sources
+# ---------------------------------------------------------------------------
+
+class TestLinuxSources:
+    async def test_basic_cpu(self, duct_service):
+        skip_if_no_hostname()
+        s = basic.CPU({'service': 'cpu'}, _qb, duct_service)
         try:
-            socket.gethostbyaddr(socket.gethostname())
-        except socket.herror:
-            raise unittest.SkipTest('Unable to get local hostname.')
+            await s.get()
+            await s.get()
+        except Exception:
+            pytest.skip('Might not exist in docker')
 
-    def _qb(self, source, events):
-        pass
-
-class FakeDBAPI(object):
-    def __init__(self, queryHandler=None):
-        self.queryHandler = queryHandler or self._handle_query
-        self.closed = False
-
-    def _handle_query(self, request):
-        return []
-
-    def runQuery(self, query, *a, **kw):
-        """ Run a query """
-        return defer.maybeDeferred(self.queryHandler, query)
-
-    def close(self):
-        """ Closes fake connection """
-        def _close():
-            self.closed = True
-        return defer.maybeDeferred(_close)
-
-class FakeMuninServer(object):
-    configs = {
-        'apache_accesses': globs.MUNIN_APACHE_ACCESSES,
-        'apache_processes': globs.MUNIN_APACHE_PROCS
-    }
-
-    results = {
-        'apache_accesses': 'accesses80.value $',
-        'apache_processes': 'busy80.value 1\nidle80.value 49\nfree80.value 100'
-    }
-
-    def sendCommand(self, command, clist=False):
-        d = defer.Deferred()
-
-        result = ""
-        if command.startswith('cap '):
-            result = "cap multigraph dirtyconfig"
-
-        if command == 'list':
-            result = globs.MUNIN_LIST + '\n'
-
-        if command.startswith('config '):
-            toconfigure = command.split()[-1]
-            result = self.configs.get(toconfigure, "")
-
-        if command.startswith('fetch '):
-            tofetch = command.split()[-1]
-            result = self.results.get(tofetch, "")
-
-        if clist:
-            d.callback(result.strip('\n').split('\n'))
-        else:
-            d.callback(result)
-
-        return d
-
-    def disconnect(self):
-        d = defer.Deferred()
-        d.callback(None)
-        return d
-
-class FakeTransport(object):
-    def loseConnection(self, *a):
-        return None
-
-class FakeMemcache(object):
-    transport = FakeTransport()
-    def stats(self):
-        return globs.MEMCACHE_STATS
-
-class TestOther(TestSources):
-    @defer.inlineCallbacks
-    def test_postgresql(self):
-        def queryHandler(request):
-            return [
-                ('template1', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-                ('template0', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
-                ('postgres', 1, 1256230, 1, 1058, 33931091, 405747556, 6290701,
-                 0, 0, 0),
-                ('testdb', 0, 1304478, 0, 1495, 53416317, 686856059, 9578732,
-                 3094, 460, 151)
-            ]
-
-        events = []
-        def _qb(source, event):
-            events.append(event)
-        s = postgresql.PostgreSQL({'service': 'postgres'},
-                                  _qb, self.duct)
-
-        s._get_connection = lambda: FakeDBAPI(queryHandler)
-
-        event = yield s.get()
-
-        self.assertEquals(events[1].service, 'postgres.postgres.commits')
-        self.assertEquals(events[1].metric, 1256230)
-
-    @defer.inlineCallbacks
-    def test_elastic(self):
-        s = elasticsearch.ElasticSearch({'service': 'es'},
-                                          self._qb, self.duct)
-
-        def _request(path):
-            if path == '/_cluster/stats':
-                return globs.ES_CLUSTER_STATS
-
-            if path == '/_nodes/stats':
-                return globs.ES_NODES_STATS
-
-        def _request_wrapper(path, **kw):
-            return defer.maybeDeferred(_request, path)
-
-        s.client._request = _request_wrapper
-
-        events = yield s.get()
-
-        self.assertEquals(events[0].service, 'es.cluster.status')
-        self.assertEquals(events[0].metric, 1)
-
-    @defer.inlineCallbacks
-    def test_munin(self):
-        s = munin.MuninNode({'service': 'munin'}, self._qb, self.duct)
-
-        def _connect_munin():
-            return defer.maybeDeferred(lambda: FakeMuninServer())
-
-        s._connect_munin = _connect_munin
-
-        events = yield s.get()
-
-        self.assertEquals(events[0].metric, 1)
-        self.assertEquals(events[1].metric, 49.0)
-
-    @defer.inlineCallbacks
-    def test_memcache(self):
-        def _get_connector():
-            return defer.maybeDeferred(lambda: FakeMemcache())
-        s = memcache.Memcache({'service': 'memcache'}, self._qb, self.duct)
-        s._get_connector = _get_connector
-
-        events = yield s.get()
-
-        self.assertEquals(events[3].service, 'memcache.total.items')
-        self.assertEquals(events[3].metric, 44)
-
-    @defer.inlineCallbacks
-    def test_haproxy(self):
-        def _get_stats():
-            return defer.maybeDeferred(lambda: globs.HAPROXY_CSV)
-
-        s = haproxy.HAProxy({'service': 'haproxy'}, self._qb, self.duct)
-        s._get_stats = _get_stats
-
-        events = yield s.get()
-
-    def test_sensors(self):
-        s = sensors.Sensors({'service': 'sensors'}, self._qb, self.duct)
-        events = s.get()
-
-        s._find_sensors = lambda: {
-            'acpitz': {},
-            'coretemp': {'physical_id_0': 58.0, 'core_0': 58.0, 'core_1': 54.0},
-            'dell_smm': {'other': 34.0, 'processor_fan': 0, 'ambient': 48.0, 'cpu': 54.0, 'sodimm': 38.0}
-        }
-
-        events = s.get()
-
-        e = [e for e in events if e.service ==
-                'sensors.coretemp.physical_id_0']
-
-        self.assertEquals(e[0].metric, 58.0)
-
-class TestLinuxSources(TestSources):
-    def test_basic_cpu(self):
-        self.skip_if_no_hostname()
-        s = basic.CPU({'service': 'cpu'}, self._qb, self.duct)
-
-        try:
-            s.get()
-            s.get()
-        except:
-            raise unittest.SkipTest('Might not exist in docker')
-
-    def test_basic_cpu_multi_core(self):
-        s = basic.CPU({
-            'service': 'cpu',
-            'hostname': 'localhost',
-        }, self._qb, self.duct)
+    async def test_basic_cpu_multi_core(self, duct_service):
+        s = basic.CPU({'service': 'cpu', 'hostname': 'localhost'},
+                      _qb, duct_service)
 
         stats = [
             "cpu  2255 34 2290 25563 6290 127 456 0 0 0",
             "cpu0 181705 1227 44920 4777152 5864 0 8054 0 0 0",
             "cpu1 186678 1194 43662 1196906 1169 0 860 0 0 0"
         ]
-
         s._read_proc_stat = lambda: stats
-        # This is the first time we're getting this stat, so we get no events.
-        self.assertEqual(s.get(), None)
+        assert await s.get() is None
 
-        stats = ["cpu  4510 68 4580 51126 12580 254 912 0 0 0"]
         stats = [
             "cpu  2255 34 2290 25563 6290 127 456 0 0 0",
             "cpu0 181728 1227 44936 4781296 5865 0 8055 0 0 0",
             "cpu1 186712 1194 43670 1201159 1173 0 860 0 0 0"
         ]
-
         s._read_proc_stat = lambda: stats
-        events = s.get()
+        events = await s.get()
         cpu_event = events[-1]
         iowait_event = events[4]
-        self.assertEqual(cpu_event.service, 'cpu.core1')
-        self.assertEqual(round(cpu_event.metric, 4), 0.0098)
-        self.assertEqual(iowait_event.service, 'cpu.core0.iowait')
-        self.assertEqual(round(iowait_event.metric, 4), 0.0002)
+        assert cpu_event.service == 'cpu.core1'
+        assert round(cpu_event.metric, 4) == 0.0098
+        assert iowait_event.service == 'cpu.core0.iowait'
+        assert round(iowait_event.metric, 4) == 0.0002
 
-    def test_basic_cpu_calculation(self):
-        s = basic.CPU({
-            'service': 'cpu',
-            'hostname': 'localhost',
-        }, self._qb, self.duct)
+    async def test_basic_cpu_calculation(self, duct_service):
+        s = basic.CPU({'service': 'cpu', 'hostname': 'localhost'},
+                      _qb, duct_service)
 
         stats = ["cpu  2255 34 2290 25563 6290 127 456 0 0 0"]
         s._read_proc_stat = lambda: stats
-        # This is the first time we're getting this stat, so we get no events.
-        self.assertEqual(s.get(), None)
+        assert await s.get() is None
 
         stats = ["cpu  4510 68 4580 51126 12580 254 912 0 0 0"]
         s._read_proc_stat = lambda: stats
-        events = s.get()
+        events = await s.get()
         cpu_event = events[-1]
         iowait_event = events[4]
-        self.assertEqual(cpu_event.service, 'cpu')
-        self.assertEqual(round(cpu_event.metric, 4), 0.1395)
-        self.assertEqual(iowait_event.service, 'cpu.iowait')
-        self.assertEqual(round(iowait_event.metric, 4), 0.1699)
+        assert cpu_event.service == 'cpu'
+        assert round(cpu_event.metric, 4) == 0.1395
+        assert iowait_event.service == 'cpu.iowait'
+        assert round(iowait_event.metric, 4) == 0.1699
 
-    @defer.inlineCallbacks
-    def test_basic_cpu_ssh(self):
+    @pytest.mark.asyncio
+    async def test_basic_cpu_ssh(self, duct_service):
         s = basic.CPU({
             'service': 'cpu',
             'use_ssh': True,
@@ -268,46 +101,48 @@ class TestLinuxSources(TestSources):
             'ssh_password': 'None',
             'ssh_username': 'test',
             'hostname': 'localhost',
-        }, self._qb, self.duct)
+        }, _qb, duct_service)
 
         stats = "cpu  2255 34 2290 25563 6290 127 456 0 0 0\n"
-        s.fork = lambda *x: defer.maybeDeferred(lambda *x: (stats, '', 0))
-        # This is the first time we're getting this stat, so we get no events.
-        m = yield s.sshGet()
-        self.assertEqual(m, None)
+
+        async def _fake_fork(*x):
+            return (stats, '', 0)
+
+        s.fork = _fake_fork
+        m = await s.sshGet()
+        assert m is None
 
         stats = "cpu  4510 68 4580 51126 12580 254 912 0 0 0\n"
-        s.fork = lambda *x: defer.maybeDeferred(lambda *x: (stats, '', 0))
-        events = yield s.sshGet()
+        s.fork = _fake_fork
+        events = await s.sshGet()
         cpu_event = events[-1]
         iowait_event = events[4]
-        self.assertEqual(cpu_event.service, 'cpu')
-        self.assertEqual(round(cpu_event.metric, 4), 0.1395)
-        self.assertEqual(iowait_event.service, 'cpu.iowait')
-        self.assertEqual(round(iowait_event.metric, 4), 0.1699)
+        assert cpu_event.service == 'cpu'
+        assert round(cpu_event.metric, 4) == 0.1395
+        assert iowait_event.service == 'cpu.iowait'
+        assert round(iowait_event.metric, 4) == 0.1699
 
-    def test_basic_cpu_calculation_no_guest_stats(self):
+    async def test_basic_cpu_calculation_no_guest_stats(self, duct_service):
         s = basic.CPU({'service': 'cpu', 'hostname': 'localhost'},
-                      self._qb, self.duct)
+                      _qb, duct_service)
 
         stats = ["cpu  2255 34 2290 25563 6290 127 456 0"]
         s._read_proc_stat = lambda: stats
-        # This is the first time we're getting this stat, so we get no events.
-        self.assertEqual(s.get(), None)
+        assert await s.get() is None
 
         stats = ["cpu  4510 68 4580 51126 12580 254 912 0"]
         s._read_proc_stat = lambda: stats
-        events = s.get()
+        events = await s.get()
         cpu_event = events[-1]
         iowait_event = events[4]
-        self.assertEqual(cpu_event.service, 'cpu')
-        self.assertEqual(round(cpu_event.metric, 4), 0.1395)
-        self.assertEqual(iowait_event.service, 'cpu.iowait')
-        self.assertEqual(round(iowait_event.metric, 4), 0.1699)
+        assert cpu_event.service == 'cpu'
+        assert round(cpu_event.metric, 4) == 0.1395
+        assert iowait_event.service == 'cpu.iowait'
+        assert round(iowait_event.metric, 4) == 0.1699
 
-    def test_disk_io(self):
+    async def test_disk_io(self, duct_service):
         s = basic.DiskIO({'service': 'disk', 'hostname': 'localhost'},
-                         self._qb, self.duct)
+                         _qb, duct_service)
 
         stats = [
             '   1       0 ram0 0 0 0 0 0 0 0 0 0 0 0',
@@ -316,22 +151,18 @@ class TestLinuxSources(TestSources):
             ' 202      32 xvdc 576 10 3739 748 144 0 4497 18080 0 8616 18828',
             ' 202      33 xvdc1 423 0 2435 264 144 0 4497 18080 0 8132 18344',
         ]
-
         s._getstats = lambda: stats
-        events = s.get()
+        events = await s.get()
+        assert events[0].metric == 32
+        assert events[1].metric == 2
 
-        self.assertEqual(events[0].metric, 32)
-        self.assertEqual(events[1].metric, 2)
+    async def test_basic_memory(self, duct_service):
+        skip_if_no_hostname()
+        s = basic.Memory({'service': 'mem'}, _qb, duct_service)
+        await s.get()
 
-    def test_basic_memory(self):
-        self.skip_if_no_hostname()
-        s = basic.Memory({'service': 'mem'}, self._qb, self.duct)
-
-        s.get()
-
-    def test_basic_memory_avail(self):
-        s = basic.Memory(
-            {'interval': 1.0, 'service': 'mem'}, self._qb, self.duct)
+    def test_basic_memory_avail(self, duct_service):
+        s = basic.Memory({'interval': 1.0, 'service': 'mem'}, _qb, duct_service)
 
         out = """MemTotal:        8048992 kB
 MemFree:         2774664 kB
@@ -340,13 +171,8 @@ Buffers:          145408 kB
 Cached:          3183724 kB
 SwapCached:            0 kB\n"""
         event = s._parse_stats(out.split('\n'))
-
         used, total = event.description.split()[-1].split('/')
-        used = int(used)
-        total = int(total)
-        avail = total - used
-
-        self.assertEquals(avail, 5631108)
+        assert int(total) - int(used) == 5631108
 
         out = """MemTotal:        8048992 kB
 MemFree:         2774664 kB
@@ -354,109 +180,217 @@ Buffers:          145408 kB
 Cached:          3183724 kB
 SwapCached:            0 kB\n"""
         event = s._parse_stats(out.split('\n'))
-
         used, total = event.description.split()[-1].split('/')
-        used = int(used)
-        total = int(total)
-        avail = total - used
+        assert int(total) - int(used) == 6103796
 
-        self.assertEquals(avail, 6103796)
+    async def test_basic_load(self, duct_service):
+        skip_if_no_hostname()
+        s = basic.LoadAverage({'service': 'mem'}, _qb, duct_service)
+        await s.get()
 
+    @pytest.mark.asyncio
+    async def test_process_count(self, duct_service):
+        skip_if_no_hostname()
+        s = process.ProcessCount({'service': 'proc'}, _qb, duct_service)
+        await s.get()
 
-    def test_basic_load(self):
-        self.skip_if_no_hostname()
-        s = basic.LoadAverage({'service': 'mem'}, self._qb, self.duct)
+    @pytest.mark.asyncio
+    async def test_basic_disk_space(self, duct_service):
+        skip_if_no_hostname()
+        s = basic.DiskFree({'service': 'df'}, _qb, duct_service)
+        await s.get()
 
-        s.get()
+    @pytest.mark.asyncio
+    async def test_process_stats(self, duct_service):
+        skip_if_no_hostname()
+        s = process.ProcessStats({'service': 'ps'}, _qb, duct_service)
+        await s.get()
 
-    @defer.inlineCallbacks
-    def test_process_count(self):
-        self.skip_if_no_hostname()
-        s = process.ProcessCount({'service': 'proc'}, self._qb, self.duct)
-
-        yield s.get()
-
-    @defer.inlineCallbacks
-    def test_basic_disk_space(self):
-        self.skip_if_no_hostname()
-        s = basic.DiskFree({'service': 'df'}, self._qb, self.duct)
-
-        yield s.get()
-
-    @defer.inlineCallbacks
-    def test_process_stats(self):
-        self.skip_if_no_hostname()
-        s = process.ProcessStats({'service': 'ps'}, self._qb, self.duct)
-
-        yield s.get()
-
-    @defer.inlineCallbacks
-    def test_http_request(self):
-        self.skip_if_no_hostname()
-        s = network.HTTP({'service': 'http', 'url': 'http://httpbin.org'},
-                         self._qb, self.duct)
-
-        event = yield s._get()
-        self.assertEquals(event.state, 'ok')
-
-    @defer.inlineCallbacks
-    def test_http_request_timeout(self):
-        raise unittest.SkipTest('Test is unreliable')
-        self.skip_if_no_hostname()
-        s = network.HTTP({
-            'service': 'http',
-            'timeout': 1,
-            'url': 'http://1.1.1.1/'
-        }, self._qb, self.duct)
-
-        event = yield s._get()
-        self.assertEquals(event.state, 'critical')
-        self.assertEquals('timeout' in event.description, True)
-
-    @defer.inlineCallbacks
-    def test_http_request_fail(self):
-        self.skip_if_no_hostname()
-        s = network.HTTP({
-            'service': 'http',
-            'url': 'http://noresolve/'
-        }, self._qb, self.duct)
-
-        event = yield s._get()
-        self.assertEquals(event.state, 'critical')
-
-    def test_network_stats(self):
-        self.skip_if_no_hostname()
-        s = basic.Network({'service': 'net'}, self._qb, self.duct)
+    async def test_network_stats(self, duct_service):
+        skip_if_no_hostname()
+        s = basic.Network({'service': 'net'}, _qb, duct_service)
 
         s._readStats = lambda: [
-            '  eth0: 254519754 1437339    0    0    0     0          0      '+
+            '  eth0: 254519754 1437339    0    0    0     0          0      '
             '   0 202067280 1154168    0    0    0     0       0          0',
-            '    lo: 63830682  900933    0    0    0     0          0       '+
+            '    lo: 63830682  900933    0    0    0     0          0       '
             '  0 63830682  900933    0    0    0     0       0          0'
         ]
 
-        ev = s.get()
-        self.assertEquals(ev[0].metric, 254519754)
-        self.assertEquals(ev[1].metric, 1437339)
-        self.assertEquals(ev[2].metric, 0)
-        self.assertEquals(ev[3].metric, 202067280)
-        self.assertEquals(ev[4].metric, 1154168)
-        self.assertEquals(ev[5].metric, 0)
+        ev = await s.get()
+        assert ev[0].metric == 254519754
+        assert ev[1].metric == 1437339
+        assert ev[2].metric == 0
+        assert ev[3].metric == 202067280
+        assert ev[4].metric == 1154168
+        assert ev[5].metric == 0
 
-    @defer.inlineCallbacks
-    def test_apache_stats(self):
+    async def test_sensors(self, duct_service):
+        s = sensors.Sensors({'service': 'sensors'}, _qb, duct_service)
+        s._find_sensors = lambda: {
+            'acpitz': {},
+            'coretemp': {'physical_id_0': 58.0, 'core_0': 58.0, 'core_1': 54.0},
+            'dell_smm': {'other': 34.0, 'processor_fan': 0, 'ambient': 48.0,
+                         'cpu': 54.0, 'sodimm': 38.0}
+        }
+        events = await s.get()
+        e = [ev for ev in events if ev.service == 'sensors.coretemp.physical_id_0']
+        assert e[0].metric == 58.0
+
+
+# ---------------------------------------------------------------------------
+# Database/other sources
+# ---------------------------------------------------------------------------
+
+class TestOtherSources:
+    @pytest.mark.asyncio
+    async def test_postgresql(self, duct_service):
+        events = []
+
+        def _qb_ev(source, event):
+            events.append(event)
+
+        s = postgresql.PostgreSQL({'service': 'postgres'}, _qb_ev, duct_service)
+
+        rows = [
+            ('template1', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+            ('template0', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+            ('postgres', 1, 1256230, 1, 1058, 33931091, 405747556, 6290701, 0, 0, 0),
+            ('testdb', 0, 1304478, 0, 1495, 53416317, 686856059, 9578732, 3094, 460, 151)
+        ]
+
+        class FakeConn:
+            async def fetch(self, query):
+                return rows
+
+            async def close(self):
+                pass
+
+        async def _fake_connect(**kw):
+            return FakeConn()
+
+        import unittest.mock as mock
+        with mock.patch('asyncpg.connect', _fake_connect):
+            event = await s.get()
+
+        assert events[1].service == 'postgres.postgres.commits'
+        assert events[1].metric == 1256230
+
+    @pytest.mark.asyncio
+    async def test_elastic(self, duct_service):
+        s = elasticsearch.ElasticSearch({'service': 'es'}, _qb, duct_service)
+
+        async def _request(path, data=None, method='GET'):
+            if path == '/_cluster/stats':
+                return globs.ES_CLUSTER_STATS
+            if path == '/_nodes/stats':
+                return globs.ES_NODES_STATS
+
+        s.client._request = _request
+
+        events = await s.get()
+
+        assert events[0].service == 'es.cluster.status'
+        assert events[0].metric == 1
+
+    @pytest.mark.asyncio
+    async def test_munin(self, duct_service):
+        s = munin.MuninNode({'service': 'munin'}, _qb, duct_service)
+
+        # Patch the MuninClient.connect to use a fake in-memory client
+        class FakeMuninClient:
+            async def connect(self):
+                pass
+
+            async def send_command(self, command, multiline=False):
+                if command.startswith('cap '):
+                    return "cap multigraph dirtyconfig"
+                if command == 'list':
+                    return globs.MUNIN_LIST
+                if command.startswith('config '):
+                    toconfigure = command.split()[-1]
+                    configs = {
+                        'apache_accesses': globs.MUNIN_APACHE_ACCESSES,
+                        'apache_processes': globs.MUNIN_APACHE_PROCS,
+                    }
+                    r = configs.get(toconfigure, "")
+                    return r.strip('\n').split('\n') if multiline else r
+                if command.startswith('fetch '):
+                    tofetch = command.split()[-1]
+                    results = {
+                        'apache_accesses': 'accesses80.value $',
+                        'apache_processes': 'busy80.value 1\nidle80.value 49\nfree80.value 100',
+                    }
+                    r = results.get(tofetch, "")
+                    return r.strip('\n').split('\n') if multiline else r
+                return "" if not multiline else []
+
+            async def disconnect(self):
+                pass
+
+        import duct.sources.munin as munin_module
+        orig = munin_module.MuninClient
+
+        def _fake_client(host, port):
+            return FakeMuninClient()
+
+        munin_module.MuninClient = _fake_client
+        try:
+            events = await s.get()
+        finally:
+            munin_module.MuninClient = orig
+
+        assert events[0].metric == 1
+        assert events[1].metric == 49.0
+
+    @pytest.mark.asyncio
+    async def test_memcache(self, duct_service):
+        s = memcache.Memcache({'service': 'memcache'}, _qb, duct_service)
+
+        async def _fake_stats(host, port, timeout=5.0):
+            return {k: str(v) for k, v in globs.MEMCACHE_STATS.items()}
+
+        import duct.sources.database.memcache as mc_mod
+        orig = mc_mod._get_memcache_stats
+        mc_mod._get_memcache_stats = _fake_stats
+        try:
+            events = await s.get()
+        finally:
+            mc_mod._get_memcache_stats = orig
+
+        total_items_ev = [e for e in events if 'total.items' in e.service]
+        assert total_items_ev[0].metric == 44
+
+    @pytest.mark.asyncio
+    async def test_haproxy(self, duct_service):
+        s = haproxy.HAProxy({'service': 'haproxy'}, _qb, duct_service)
+
+        async def _get_stats():
+            return globs.HAPROXY_CSV
+
+        s._get_stats = _get_stats
+        events = await s.get()
+
+
+# ---------------------------------------------------------------------------
+# Apache / Nginx sources
+# ---------------------------------------------------------------------------
+
+class TestWebSources:
+    @pytest.mark.asyncio
+    async def test_apache_stats(self, duct_service):
         src = apache.Apache({
             'service': 'apache',
             'hostname': 'localhost',
             'url': 'http://localhost/server-status?auto'
-        }, self._qb, self.duct)
+        }, _qb, duct_service)
 
-        def apstats():
+        async def _get_stats():
             return globs.APACHE_STATS
 
-        src._get_stats = lambda: defer.maybeDeferred(apstats)
+        src._get_stats = _get_stats
 
-        events = yield src.get()
+        events = await src.get()
 
         results = {
             'apache.uptime': 4564,
@@ -475,14 +409,14 @@ SwapCached:            0 kB\n"""
         }
 
         for ev in events:
-            self.assertEquals(ev.metric, results.get(ev.service))
+            assert ev.metric == results.get(ev.service)
 
-    def test_nginx_parse(self):
+    def test_nginx_parse(self, duct_service):
         src = nginx.Nginx({
             'service': 'nginx',
             'hostname': 'localhost',
             'stats_url': 'http://localhost/nginx_stats'
-        }, self._qb, self.duct)
+        }, _qb, duct_service)
 
         ngstats = """Active connections: 3
 server accepts handled requests
@@ -490,22 +424,16 @@ server accepts handled requests
 Reading: 0 Writing: 1 Waiting: 2\n"""
 
         metrics = src._parse_nginx_stats(ngstats)
+        assert metrics['handled'][0] == 20649
 
-        self.assertEquals(metrics['handled'][0], 20649)
-
-    def test_nginx_log_nohistory(self):
-        try:
-            os.unlink('foo.log.lf')
-            os.unlink('foo.log')
-        except:
-            pass
-
+    async def test_nginx_log_nohistory(self, duct_service, tmp_path):
         events = []
 
         def qb(src, ev):
             events.append(ev)
 
-        f = open('foo.log', 'wt')
+        log_file = str(tmp_path / 'foo.log')
+        f = open(log_file, 'wt')
         f.write('192.168.0.1 - - [16/Jan/2015:16:31:29 +0200] "GET /foo HTTP/1.1" 200 210 "-" "My Browser"\n')
         f.write('192.168.0.1 - - [16/Jan/2015:16:51:29 +0200] "GET /foo HTTP/1.1" 200 410 "-" "My Browser"\n')
         f.flush()
@@ -514,36 +442,28 @@ Reading: 0 Writing: 1 Waiting: 2\n"""
             'service': 'nginx',
             'hostname': 'localhost',
             'log_format': 'combined',
-            'file': 'foo.log'
-        }, qb, self.duct)
+            'file': log_file
+        }, qb, duct_service)
 
-        src.log.tmp = 'foo.log2.lf'
-
-        src.get()
-
-        self.assertEquals(len(events), 0)
+        src.log.tmp = str(tmp_path / 'foo.log2.lf')
+        await src.get()
+        assert len(events) == 0
 
         f.write('192.168.0.1 - - [16/Jan/2015:17:31:29 +0200] "GET /foo HTTP/1.1" 200 210 "-" "My Browser"\n')
         f.write('192.168.0.1 - - [16/Jan/2015:17:51:29 +0200] "GET /foo HTTP/1.1" 200 410 "-" "My Browser"\n')
         f.flush()
 
-        src.get()
+        await src.get()
+        assert len(events) > 0
 
-        self.assertEquals(len(events)>0, True)
-
-    def test_nginx_log(self):
-        try:
-            os.unlink('foo.log.lf')
-            os.unlink('foo.log')
-        except:
-            pass
-
+    async def test_nginx_log(self, duct_service, tmp_path):
         events = []
 
         def qb(src, ev):
             events.append(ev)
 
-        f = open('foo.log', 'wt')
+        log_file = str(tmp_path / 'foo.log')
+        f = open(log_file, 'wt')
         f.write('192.168.0.1 - - [16/Jan/2015:16:31:29 +0200] "GET /foo HTTP/1.1" 200 210 "-" "My Browser"\n')
         f.write('192.168.0.1 - - [16/Jan/2015:16:51:29 +0200] "GET /foo HTTP/1.1" 200 410 "-" "My Browser"\n')
         f.flush()
@@ -553,91 +473,96 @@ Reading: 0 Writing: 1 Waiting: 2\n"""
             'hostname': 'localhost',
             'log_format': 'combined',
             'history': True,
-            'file': 'foo.log'
-        }, qb, self.duct)
+            'file': log_file
+        }, qb, duct_service)
 
-        src.log.tmp = 'foo.log.lf'
-
-        src.get()
+        src.log.tmp = str(tmp_path / 'foo.log.lf')
+        await src.get()
 
         ev1 = events[0]
         ev2 = events[1]
 
         for i in ev1:
-            if i.service=='nginx.client.192.168.0.1.bytes':
-                self.assertEquals(i.metric, 210)
+            if i.service == 'nginx.client.192.168.0.1.bytes':
+                assert i.metric == 210
 
         for i in ev2:
-            if i.service=='nginx.client.192.168.0.1.bytes':
-                self.assertEquals(i.metric, 410)
+            if i.service == 'nginx.client.192.168.0.1.bytes':
+                assert i.metric == 410
 
-        events = []
+        events.clear()
 
         f.write('192.168.0.1 - - [16/Jan/2015:17:10:31 +0200] "GET /foo HTTP/1.1" 200 410 "-" "My Browser"\n')
         f.write('192.168.0.1 - - [16/Jan/2015:17:10:34 +0200] "GET /bar HTTP/1.1" 200 410 "-" "My Browser"\n')
         f.close()
 
-        src.get()
+        await src.get()
 
         for i in events[0]:
-            if i.service=='nginx.client.192.168.0.1.requests':
-                self.assertEquals(i.metric, 2)
-            if i.service=='nginx.user-agent.My Browser.bytes':
-                self.assertEquals(i.metric, 820)
+            if i.service == 'nginx.client.192.168.0.1.requests':
+                assert i.metric == 2
+            if i.service == 'nginx.user-agent.My Browser.bytes':
+                assert i.metric == 820
+            if i.service == 'nginx.request./foo.bytes':
+                assert i.metric == 410
 
-            if i.service=='nginx.request./foo.bytes':
-                self.assertEquals(i.metric, 410)
 
-class TestRiakSources(TestSources):
-    def start_fake_riak_server(self, stats):
-        def cb(listener):
-            self.addCleanup(listener.stopListening)
-            return listener
+# ---------------------------------------------------------------------------
+# Riak sources (uses a real HTTP server)
+# ---------------------------------------------------------------------------
 
-        data = static.Data(json.dumps(stats).encode(), 'application/json')
+@pytest_asyncio.fixture
+async def riak_server():
+    """Start an aiohttp HTTP server that returns fake Riak stats."""
+    app = aiohttp.web.Application()
+    stats_data = {}
 
-        data.isLeaf = True
-        site = server.Site(data)
-        endpoint = endpoints.TCP4ServerEndpoint(reactor, 0)
-        return endpoint.listen(site).addCallback(cb)
+    async def handler(request):
+        return aiohttp.web.Response(
+            text=json.dumps(stats_data),
+            content_type='application/json')
 
-    def make_riak_stats_source(self, config_overrides={}):
-        config = {
+    app.router.add_get('/', handler)
+    runner = aiohttp.web.AppRunner(app)
+    await runner.setup()
+    site = aiohttp.web.TCPSite(runner, '127.0.0.1', 0)
+    await site.start()
+    port = runner.addresses[0][1]
+    yield stats_data, port
+    await runner.cleanup()
+
+
+class TestRiakSources:
+    @pytest.mark.asyncio
+    async def test_riak_stats_zeros(self, duct_service, riak_server):
+        stats_data, port = riak_server
+        stats_data.update({'node_gets': 0, 'node_puts': 0})
+
+        s = riak.RiakStats({
             'service': 'riak',
             'hostname': 'localhost',
-        }
-        config.update(config_overrides)
-        return riak.RiakStats(config, self._qb, self.duct)
+            'url': 'http://127.0.0.1:%s/' % port,
+        }, _qb, duct_service)
 
-    @defer.inlineCallbacks
-    def test_riak_stats_zeros(self):
-        listener = yield self.start_fake_riak_server({
-            'node_gets': 0,
-            'node_puts': 0,
-        })
-        addr = listener.getHost()
-        url = 'http://localhost:%s/' % (addr.port,)
-        s = self.make_riak_stats_source({'url': url})
+        [gets, puts] = await s.get()
+        assert gets.service == "riak.gets_per_second"
+        assert gets.metric == 0.0
+        assert puts.service == "riak.puts_per_second"
+        assert puts.metric == 0.0
 
-        [gets, puts] = yield s.get()
-        self.assertEqual(gets.service, "riak.gets_per_second")
-        self.assertEqual(gets.metric, 0.0)
-        self.assertEqual(puts.service, "riak.puts_per_second")
-        self.assertEqual(puts.metric, 0.0)
+    @pytest.mark.asyncio
+    async def test_riak_stats(self, duct_service, riak_server):
+        stats_data, port = riak_server
+        stats_data.update({'node_gets': 150, 'node_puts': 45})
 
-    @defer.inlineCallbacks
-    def test_riak_stats(self):
-        listener = yield self.start_fake_riak_server({
-            'node_gets': 150,
-            'node_puts': 45,
-        })
-        addr = listener.getHost()
-        url = 'http://localhost:%s/' % (addr.port,)
-        s = self.make_riak_stats_source({'url': url})
+        s = riak.RiakStats({
+            'service': 'riak',
+            'hostname': 'localhost',
+            'url': 'http://127.0.0.1:%s/' % port,
+        }, _qb, duct_service)
 
-        [gets, puts] = yield s.get()
-        self.assertEqual(gets.service, "riak.gets_per_second")
-        self.assertEqual(gets.metric, 2.5)
-        self.assertEqual(puts.service, "riak.puts_per_second")
-        self.assertEqual(puts.metric, 0.75)
-
+        [gets, puts] = await s.get()
+        assert gets.service == "riak.gets_per_second"
+        assert gets.metric == 2.5
+        assert puts.service == "riak.puts_per_second"
+        assert puts.metric == 0.75

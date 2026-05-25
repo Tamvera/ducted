@@ -7,8 +7,6 @@
 """
 from zope.interface import implementer
 
-from twisted.internet import defer
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 from duct.utils import wait
@@ -51,9 +49,10 @@ class MPL115(Source):
         Source.__init__(self, *a, **kw)
 
         try:
-            import smbus
-        except ImportError:
-            raise Exception("MPL115 source requires python-smbus (smbus-cffi)")
+            import smbus  # pylint: disable=import-outside-toplevel
+        except ImportError as exc:
+            raise ImportError(
+                "MPL115 source requires python-smbus (smbus-cffi)") from exc
 
         self.address = self.config.get('address', 0x60)
         self.bus = smbus.SMBus(self.config.get('smbus', 1))
@@ -61,15 +60,14 @@ class MPL115(Source):
 
         self.readCoefficients()
 
-    @defer.inlineCallbacks
-    def get(self):
-        data = yield self.readData()
+    async def get(self):
+        data = await self.readData()
 
-        defer.returnValue([
+        return [
             self.createEvent('ok', 'HPA', round(data['hpa'], 2), prefix='hpa'),
             self.createEvent('ok', 'Temperature', round(data['temp'], 2),
                              prefix='temp')
-        ])
+        ]
 
     def readCoefficients(self):
         """Read coefficients from sensor"""
@@ -91,14 +89,13 @@ class MPL115(Source):
         self.b2 = float(self.b2) / (1 << 14)
         self.c12 = float(self.c12) / (1 << 24)
 
-    @defer.inlineCallbacks
-    def readData(self):
+    async def readData(self):
         """Read data from the sensor
            returns dict containing 'hpa' and 'temp' values
         """
         self.bus.write_byte_data(self.address, CONVERT, 0x01)
 
-        yield wait(3)
+        await wait(3)
 
         data = self.bus.read_i2c_block_data(self.address, PADC_MSB, 4)
 
@@ -112,4 +109,4 @@ class MPL115(Source):
 
         temp = 25.0 - (tadc - 512.0) / 5.35
 
-        defer.returnValue({'hpa': hpa, 'temp': temp})
+        return {'hpa': hpa, 'temp': temp}

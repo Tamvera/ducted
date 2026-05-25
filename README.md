@@ -1,8 +1,54 @@
-Duct
-======
+# Duct
 
-[![Build Status](https://travis-ci.org/ducted/duct.png?branch=master)](https://travis-ci.org/ducted/duct) [![Latest Docs](https://readthedocs.org/projects/duct/badge/?version=latest)](http://duct.readthedocs.org) [![Coverage Status](https://coveralls.io/repos/github/ducted/duct/badge.svg?branch=master)](https://coveralls.io/github/ducted/duct?branch=master)
+[![CI](https://github.com/Tamvera/ducted/actions/workflows/ci.yml/badge.svg)](https://github.com/Tamvera/ducted/actions/workflows/ci.yml)
+[![Latest Docs](https://readthedocs.org/projects/duct/badge/?version=latest)](http://duct.readthedocs.org)
 
-Duct is an event gateway, poller and router. It can collect metrics or events from multiple sources, and output them to multiple destinations - currently supprort for Elasticsearch and Riemann is included but Duct is designed to be easily extensible through its plugin API.
+Duct is a modular monitoring agent and event router built on Python asyncio (Python 3.11+).
+It collects metrics from multiple sources and routes them to multiple outputs — currently
+Riemann, Elasticsearch, Prometheus, OpenTSDB, and Bosun are supported, and the plugin API
+makes it straightforward to add more.
 
-Documentation is available here http://duct.readthedocs.org/
+## Installation
+
+```
+pip install ducted
+```
+
+## Quick start
+
+Create a `duct.yml` configuration file:
+
+```yaml
+interval: 1.0
+ttl: 60.0
+
+outputs:
+  - output: duct.outputs.riemann.RiemannTCP
+    server: localhost
+    port: 5555
+
+sources:
+  - service: cpu
+    source: duct.sources.linux.basic.CPU
+    interval: 1.0
+    warning:  { cpu: "> 0.5" }
+    critical: { cpu: "> 0.8" }
+
+  - service: memory
+    source: duct.sources.linux.basic.Memory
+    interval: 10.0
+
+  - service: load
+    source: duct.sources.linux.basic.LoadAverage
+    interval: 10.0
+```
+
+Then start Duct:
+
+```
+ductd -c duct.yml
+```
+
+## Documentation
+
+Full documentation is at <http://duct.readthedocs.org/>

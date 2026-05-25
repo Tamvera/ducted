@@ -11,7 +11,6 @@ from datetime import datetime
 class ApacheLogParserError(Exception):
     """Appache log parsing error
     """
-    pass
 
 class ApacheLogParser(object):
     """Parses Apache log format
@@ -131,8 +130,8 @@ class ApacheLogParser(object):
         self._pattern = '^' + ' '.join(subpatterns) + '$'
         try:
             self._regex = re.compile(self._pattern)
-        except Exception as e:
-            raise ApacheLogParserError(e)
+        except Exception as exc:
+            raise ApacheLogParserError(exc) from exc
 
     def parse(self, line):
         """
@@ -154,7 +153,7 @@ class ApacheLogParser(object):
                 data[k] = v
             return data
 
-        raise ApacheLogParserError("Unable to parse: %s" % line)
+        raise ApacheLogParserError(f"Unable to parse: {line}")
 
     def pattern(self):
         """

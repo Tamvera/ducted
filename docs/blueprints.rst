@@ -85,7 +85,7 @@ The equivalent long hand version of this configuration would be as follows ::
 
         - service: cpu
           source: duct.sources.linux.basic.CPU
-          hostname: www04.acme.com
+          hostname: www03.acme.com
           use_ssh: True
           interval: 10.0
 

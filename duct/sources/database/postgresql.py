@@ -5,16 +5,16 @@
 
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
-from zope.interface import implementer
+import logging
 
-from twisted.internet import defer
-from twisted.enterprise import adbapi
-from twisted.python import log
+from zope.interface import implementer
 
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 
 from duct.aggregators import Counter64
+
+log = logging.getLogger(__name__)
 
 
 @implementer(IDuctSource)
@@ -44,71 +44,78 @@ class PostgreSQL(Source):
         self.port = self.config.get('port', 5432)
         self.host = self.config.get('host', '127.0.0.1')
 
-    def _get_connection(self):
-        return adbapi.ConnectionPool('psycopg2',
-                                     database='postgres',
-                                     host=self.host,
-                                     port=self.port,
-                                     user=self.user,
-                                     password=self.password)
-
-    @defer.inlineCallbacks
-    def get(self):
+    async def get(self):
         try:
-            p = self._get_connection()
+            import asyncpg  # pylint: disable=import-outside-toplevel
+        except ImportError:
+            log.error(
+                'duct.sources.database.postgresql.PostgreSQL requires asyncpg')
+            return None
 
-            cols = (
-                ('xact_commit', 'commits'),
-                ('xact_rollback', 'rollbacks'),
-                ('blks_read', 'disk.read'),
-                ('blks_hit', 'disk.cache'),
-                ('tup_returned', 'returned'),
-                ('tup_fetched', 'selects'),
-                ('tup_inserted', 'inserts'),
-                ('tup_updated', 'updates'),
-                ('tup_deleted', 'deletes'),
+        try:
+            conn = await asyncpg.connect(
+                host=self.host,
+                port=self.port,
+                user=self.user,
+                password=self.password,
+                database='postgres',
+            )
+        except Exception as e:
+            return self.createEvent(
+                'critical',
+                f'Connection error: {str(e).replace(chr(10), " ")}',
+                0,
+                prefix='state'
             )
 
-            keys, names = zip(*cols)
+        cols = (
+            ('xact_commit', 'commits'),
+            ('xact_rollback', 'rollbacks'),
+            ('blks_read', 'disk.read'),
+            ('blks_hit', 'disk.cache'),
+            ('tup_returned', 'returned'),
+            ('tup_fetched', 'selects'),
+            ('tup_inserted', 'inserts'),
+            ('tup_updated', 'updates'),
+            ('tup_deleted', 'deletes'),
+        )
 
-            q = yield p.runQuery(
-                'SELECT datname,numbackends,%s FROM pg_stat_database' % (
-                    ','.join(keys))
+        keys, names = zip(*cols)
+
+        try:
+            rows = await conn.fetch(
+                f"SELECT datname,numbackends,{','.join(keys)}"
+                " FROM pg_stat_database"
             )
 
-            for row in q:
+            for row in rows:
                 db = row[0]
                 threads = row[1]
                 if db not in ('template0', 'template1'):
                     self.queueBack(self.createEvent(
                         'ok',
-                        'threads: %s' % threads,
+                        f'threads: {threads}',
                         threads,
-                        prefix='%s.threads' % db
+                        prefix=f'{db}.threads'
                     ))
 
-                    for i, col in enumerate(row[2:]):
+                    for i, col in enumerate(list(row)[2:]):
                         self.queueBack(self.createEvent(
                             'ok',
-                            '%s: %s' % (names[i], col),
+                            f'{names[i]}: {col}',
                             col,
-                            prefix='%s.%s' % (db, names[i]),
+                            prefix=f'{db}.{names[i]}',
                             aggregation=Counter64
                         ))
 
-            yield p.close()
+            return self.createEvent('ok', 'Connection ok', 1, prefix='state')
 
-            defer.returnValue(self.createEvent('ok', 'Connection ok', 1,
-                                               prefix='state'))
-
-        except ImportError:
-            log.msg('duct.sources.database.postgresql.PostgreSQL'
-                    ' requires psycopg2')
-            defer.returnValue(None)
         except Exception as e:
-            defer.returnValue(self.createEvent(
+            return self.createEvent(
                 'critical',
-                'Connection error: %s' % str(e).replace('\n', ' '),
+                f'Query error: {str(e).replace(chr(10), " ")}',
                 0,
                 prefix='state'
-            ))
+            )
+        finally:
+            await conn.close()

@@ -6,13 +6,14 @@
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
 
-from zope.interface import implementer
+import logging
 
-from twisted.internet import defer
-from twisted.python import log
+from zope.interface import implementer
 
 from duct.interfaces import IDuctSource
 from duct.objects import Source
+
+log = logging.getLogger(__name__)
 
 
 @implementer(IDuctSource)
@@ -33,31 +34,27 @@ class Stats(Source):
 
         self.uc = self.config.get('executable', '/usr/sbin/unbound-control')
 
-    @defer.inlineCallbacks
-    def _get_uc_stats(self):
-        out, err, code = yield self.fork(self.uc, args=('stats', ))
+    async def _get_uc_stats(self):
+        out, err, code = await self.fork(self.uc, args=('stats',))
 
         if code == 0:
-            defer.returnValue(out.strip('\n').split('\n'))
+            return out.strip('\n').split('\n')
         else:
-            log.msg('Error running unbound-control: ' + repr(err))
-            defer.returnValue([])
+            log.warning('Error running unbound-control: %s', repr(err))
+            return []
 
-    @defer.inlineCallbacks
-    def get(self):
+    async def get(self):
         events = []
 
-        stats = yield self._get_uc_stats()
+        stats = await self._get_uc_stats()
 
         for row in stats:
             key, val = row.split('=')
-
             try:
                 val = float(val)
-            except:
-                # Not a number
+            except ValueError:
                 continue
 
             events.append(self.createEvent('ok', key, val, prefix=key))
 
-        defer.returnValue(events)
+        return events

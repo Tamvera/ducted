@@ -4,17 +4,9 @@ Getting started
 Installation
 ============
 
-Install via pypi ::
+Requires Python 3.11 or newer. Install via pip ::
 
     $ pip install ducted
-
-Or get the latest `.deb` or `.rpm` release from https://github.com/ducted/duct/releases/latest ::
-    
-    $ aptitude install python-twisted python-protobuf python-yaml
-    $ wget https://github.com/ducted/duct/releases/download/1.2/duct_1.2_amd64.deb
-    $ dpkg -i duct_1.2_amd64.deb
-
-This also gives you an init script and default config in /etc/duct/
 
 Creating a configuration file
 =============================
@@ -41,7 +33,9 @@ they collect metrics from the system. All `interval` attributes are floating
 point in seconds, this means you can check (and send to Riemann) at rates
 well below 1 second.
 
-Riemann is the default output in this configuration, but there are others.
+The ``server`` and ``port`` options above are a shorthand that starts a Riemann
+TCP output automatically. Alternatively, use the explicit ``outputs`` block
+described in the next section — this is the recommended approach.
 
 Using outputs
 =============
@@ -58,8 +52,8 @@ for example ::
           server: localhost
           port: 5555
 
-If you enable multiple outputs then the global `server`, `port` and `proto`
-options will go un-used and the default Riemann TCP transport won't start.
+When an ``outputs`` block is present the global ``server``, ``port`` and
+``proto`` shorthand is ignored.
 
 You can configure as many outputs as you like, or create your own.
 
@@ -250,10 +244,14 @@ Example ::
 Note: Currently Duct will _not_ perform any host key checking.
 
 Starting Duct
-===============
+=============
 
-To start Duct, simply use twistd to run the service and pass a config file::
+To start Duct, pass a config file to the ``ductd`` command::
 
-    twistd -n duct -c duct.yml
+    ductd -c duct.yml
 
-If you're using the Debian package then an init script is included.
+Or equivalently via the module entry point::
+
+    python -m duct -c duct.yml
+
+Use ``-v`` / ``--verbose`` to enable debug logging.

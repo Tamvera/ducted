@@ -9,8 +9,6 @@ import re
 
 from zope.interface import implementer
 
-from twisted.internet import defer
-
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 
@@ -26,15 +24,12 @@ class ProcessCount(Source):
 
     ssh = True
 
-    @defer.inlineCallbacks
-    def get(self):
-        out, _err, _code = yield self.fork('/bin/ps', args=('-e',))
+    async def get(self):
+        out, _err, _code = await self.fork('/bin/ps', args=('-e',))
 
         count = len(out.strip('\n').split('\n')) - 1
 
-        defer.returnValue(
-            self.createEvent('ok', 'Process count %s' % (count), count)
-        )
+        return self.createEvent('ok', f'Process count {count}', count)
 
 @implementer(IDuctSource)
 class ProcessStats(Source):
@@ -51,9 +46,8 @@ class ProcessStats(Source):
 
     ssh = True
 
-    @defer.inlineCallbacks
-    def get(self):
-        out, _err, _code = yield self.fork(
+    async def get(self):
+        out, _err, _code = await self.fork(
             '/bin/ps',
             args=('-eo', 'pid,user:50,etime,rss,pcpu,comm:50,cmd:255',)
         )
@@ -113,7 +107,7 @@ class ProcessStats(Source):
                     }
 
                 if binary != comm:
-                    key = "%s.%s" % (binary, comm)
+                    key = f"{binary}.{comm}"
                 else:
                     key = comm
 
@@ -131,26 +125,29 @@ class ProcessStats(Source):
         events = []
 
         for k, v in users.items():
-            events.append(self.createEvent('ok', 'User memory %s: %0.2fMB' % (
-                k, v['mem']), v['mem'], prefix="user.%s.mem" % k))
-            events.append(self.createEvent('ok', 'User CPU usage %s: %s%%' % (
-                k, int(v['cpu']*100)), v['cpu'], prefix="user.%s.cpu" % k))
+            events.append(self.createEvent(
+                'ok', f"User memory {k}: {v['mem']:0.2f}MB",
+                v['mem'], prefix=f'user.{k}.mem'))
+            events.append(self.createEvent(
+                'ok', f"User CPU usage {k}: {int(v['cpu']*100)}%",
+                v['cpu'], prefix=f'user.{k}.cpu'))
 
         for k, v in procs.items():
-            events.append(self.createEvent('ok', 'Process age %s: %ss' % (
-                k, v['age']), v['age'], prefix="proc.%s.age" % k))
+            events.append(self.createEvent(
+                'ok', f"Process age {k}: {v['age']}s",
+                v['age'], prefix=f'proc.{k}.age'))
             events.append(self.createEvent(
                 'ok',
-                'Process memory %s: %0.2fMB' % (k, v['mem']), v['mem'],
-                prefix="proc.%s.mem" % k
+                f"Process memory {k}: {v['mem']:0.2f}MB", v['mem'],
+                prefix=f'proc.{k}.mem'
             ))
             events.append(
                 self.createEvent(
                     'ok',
-                    'Process CPU usage %s: %s%%' % (k, int(v['cpu']*100)),
+                    f"Process CPU usage {k}: {int(v['cpu']*100)}%",
                     v['cpu'],
-                    prefix="proc.%s.cpu" % k
+                    prefix=f'proc.{k}.cpu'
                 )
             )
 
-        defer.returnValue(events)
+        return events
