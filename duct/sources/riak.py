@@ -31,7 +31,7 @@ class RiakStats(Source):
     """
 
     async def _get_stats_from_node(self):
-        url = self.config.get('url', 'http://%s:8098/stats' % self.hostname)
+        url = self.config.get('url', f'http://{self.hostname}:8098/stats')
         ua = self.config.get('useragent', 'Duct Riak stats checker')
 
         return await HTTPRequest().getJson(url, headers={'User-Agent': ua})

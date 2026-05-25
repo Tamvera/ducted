@@ -29,6 +29,13 @@ duct.outputs.opentsdb
    :members:
    :show-inheritance:
 
+duct.outputs.prometheus
+========================
+
+.. automodule:: duct.outputs.prometheus
+   :members:
+   :show-inheritance:
+
 duct.outputs.riemann
 ======================
 

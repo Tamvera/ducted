@@ -18,6 +18,7 @@ class IP(object):
         self.readPacket(packet)
 
     def readPacket(self, packet):
+        """Decode an IP packet header"""
         vl = struct.unpack('!b', packet[0:1])[0]
         l = (vl & 0xf) * 4
         self.offset = struct.unpack('!H', packet[6:8])
@@ -37,6 +38,7 @@ class EchoPacket(object):
             self.encodePacket()
 
     def calculateChecksum(self, buf):
+        """Calculate ICMP checksum over buf"""
         if isinstance(buf, str):
             buf = buf.encode('latin-1')
         nleft = len(buf)
@@ -53,6 +55,7 @@ class EchoPacket(object):
         return (~chksum) & 0xFFFF
 
     def encodePacket(self):
+        """Encode an ICMP echo request packet"""
         head = struct.pack('!bb', 8, 0)
         echo = struct.pack('!HH', self.seq, self.eid)
         if isinstance(self.data, str):
@@ -64,17 +67,17 @@ class EchoPacket(object):
         self.packet = head + chk + echo + data_bytes
 
     def decodePacket(self, packet):
+        """Decode an ICMP echo reply packet"""
         self.icmp_type, self.code, self.chk, self.seq, self.eid = struct.unpack(
             '!bbHHH', packet[:8])
         self.data = packet[8:]
         rc = packet[:2] + b'\x00\x00' + packet[4:]
         mychk = self.calculateChecksum(rc)
-        self.valid = (mychk == self.chk)
+        self.valid = mychk == self.chk
 
     def __repr__(self):
-        return "<type=%s code=%s chk=%s seq=%s data=%s valid=%s>" % (
-            self.icmp_type, self.code, self.chk, self.seq,
-            len(self.data), self.valid)
+        return (f"<type={self.icmp_type} code={self.code} chk={self.chk}"
+                f" seq={self.seq} data={len(self.data)} valid={self.valid}>")
 
 
 class _ICMPPinger:
@@ -126,7 +129,8 @@ class _ICMPPinger:
         self.seq += 1
 
         if self.seq < self.count:
-            self._send_handle = self.loop.call_later(self.inter, self._send_echo)
+            self._send_handle = self.loop.call_later(
+                self.inter, self._send_echo)
         else:
             tdelay = (self.maxwait * self.count) / 1000.0
             elapsed = time.time() - self.start
@@ -141,6 +145,7 @@ class _ICMPPinger:
             self._done.set_result((loss, avg_latency))
 
     async def run(self):
+        """Run the ping and return (packet_loss_percent, avg_latency_ms)."""
         self.sock.connect((self.dst, random.randint(33434, 33534)))
         self.start = time.time()
         self.loop.add_reader(self.sock.fileno(), self._data_received)

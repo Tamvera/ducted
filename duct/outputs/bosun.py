@@ -40,7 +40,7 @@ class Bosun(opentsdb.OpenTSDB):
         headers = {}
         if self.user:
             token = base64.b64encode(
-                ('%s:%s' % (self.user, self.password)).encode()
+                f'{self.user}:{self.password}'.encode()
             ).decode()
             headers['Authorization'] = 'Basic ' + token
 

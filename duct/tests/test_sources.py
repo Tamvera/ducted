@@ -39,16 +39,16 @@ def skip_if_no_hostname():
 # ---------------------------------------------------------------------------
 
 class TestLinuxSources:
-    def test_basic_cpu(self, duct_service):
+    async def test_basic_cpu(self, duct_service):
         skip_if_no_hostname()
         s = basic.CPU({'service': 'cpu'}, _qb, duct_service)
         try:
-            s.get()
-            s.get()
+            await s.get()
+            await s.get()
         except Exception:
             pytest.skip('Might not exist in docker')
 
-    def test_basic_cpu_multi_core(self, duct_service):
+    async def test_basic_cpu_multi_core(self, duct_service):
         s = basic.CPU({'service': 'cpu', 'hostname': 'localhost'},
                       _qb, duct_service)
 
@@ -58,7 +58,7 @@ class TestLinuxSources:
             "cpu1 186678 1194 43662 1196906 1169 0 860 0 0 0"
         ]
         s._read_proc_stat = lambda: stats
-        assert s.get() is None
+        assert await s.get() is None
 
         stats = [
             "cpu  2255 34 2290 25563 6290 127 456 0 0 0",
@@ -66,7 +66,7 @@ class TestLinuxSources:
             "cpu1 186712 1194 43670 1201159 1173 0 860 0 0 0"
         ]
         s._read_proc_stat = lambda: stats
-        events = s.get()
+        events = await s.get()
         cpu_event = events[-1]
         iowait_event = events[4]
         assert cpu_event.service == 'cpu.core1'
@@ -74,17 +74,17 @@ class TestLinuxSources:
         assert iowait_event.service == 'cpu.core0.iowait'
         assert round(iowait_event.metric, 4) == 0.0002
 
-    def test_basic_cpu_calculation(self, duct_service):
+    async def test_basic_cpu_calculation(self, duct_service):
         s = basic.CPU({'service': 'cpu', 'hostname': 'localhost'},
                       _qb, duct_service)
 
         stats = ["cpu  2255 34 2290 25563 6290 127 456 0 0 0"]
         s._read_proc_stat = lambda: stats
-        assert s.get() is None
+        assert await s.get() is None
 
         stats = ["cpu  4510 68 4580 51126 12580 254 912 0 0 0"]
         s._read_proc_stat = lambda: stats
-        events = s.get()
+        events = await s.get()
         cpu_event = events[-1]
         iowait_event = events[4]
         assert cpu_event.service == 'cpu'
@@ -122,17 +122,17 @@ class TestLinuxSources:
         assert iowait_event.service == 'cpu.iowait'
         assert round(iowait_event.metric, 4) == 0.1699
 
-    def test_basic_cpu_calculation_no_guest_stats(self, duct_service):
+    async def test_basic_cpu_calculation_no_guest_stats(self, duct_service):
         s = basic.CPU({'service': 'cpu', 'hostname': 'localhost'},
                       _qb, duct_service)
 
         stats = ["cpu  2255 34 2290 25563 6290 127 456 0"]
         s._read_proc_stat = lambda: stats
-        assert s.get() is None
+        assert await s.get() is None
 
         stats = ["cpu  4510 68 4580 51126 12580 254 912 0"]
         s._read_proc_stat = lambda: stats
-        events = s.get()
+        events = await s.get()
         cpu_event = events[-1]
         iowait_event = events[4]
         assert cpu_event.service == 'cpu'
@@ -140,7 +140,7 @@ class TestLinuxSources:
         assert iowait_event.service == 'cpu.iowait'
         assert round(iowait_event.metric, 4) == 0.1699
 
-    def test_disk_io(self, duct_service):
+    async def test_disk_io(self, duct_service):
         s = basic.DiskIO({'service': 'disk', 'hostname': 'localhost'},
                          _qb, duct_service)
 
@@ -152,14 +152,14 @@ class TestLinuxSources:
             ' 202      33 xvdc1 423 0 2435 264 144 0 4497 18080 0 8132 18344',
         ]
         s._getstats = lambda: stats
-        events = s.get()
+        events = await s.get()
         assert events[0].metric == 32
         assert events[1].metric == 2
 
-    def test_basic_memory(self, duct_service):
+    async def test_basic_memory(self, duct_service):
         skip_if_no_hostname()
         s = basic.Memory({'service': 'mem'}, _qb, duct_service)
-        s.get()
+        await s.get()
 
     def test_basic_memory_avail(self, duct_service):
         s = basic.Memory({'interval': 1.0, 'service': 'mem'}, _qb, duct_service)
@@ -183,10 +183,10 @@ SwapCached:            0 kB\n"""
         used, total = event.description.split()[-1].split('/')
         assert int(total) - int(used) == 6103796
 
-    def test_basic_load(self, duct_service):
+    async def test_basic_load(self, duct_service):
         skip_if_no_hostname()
         s = basic.LoadAverage({'service': 'mem'}, _qb, duct_service)
-        s.get()
+        await s.get()
 
     @pytest.mark.asyncio
     async def test_process_count(self, duct_service):
@@ -206,7 +206,7 @@ SwapCached:            0 kB\n"""
         s = process.ProcessStats({'service': 'ps'}, _qb, duct_service)
         await s.get()
 
-    def test_network_stats(self, duct_service):
+    async def test_network_stats(self, duct_service):
         skip_if_no_hostname()
         s = basic.Network({'service': 'net'}, _qb, duct_service)
 
@@ -217,7 +217,7 @@ SwapCached:            0 kB\n"""
             '  0 63830682  900933    0    0    0     0       0          0'
         ]
 
-        ev = s.get()
+        ev = await s.get()
         assert ev[0].metric == 254519754
         assert ev[1].metric == 1437339
         assert ev[2].metric == 0
@@ -225,7 +225,7 @@ SwapCached:            0 kB\n"""
         assert ev[4].metric == 1154168
         assert ev[5].metric == 0
 
-    def test_sensors(self, duct_service):
+    async def test_sensors(self, duct_service):
         s = sensors.Sensors({'service': 'sensors'}, _qb, duct_service)
         s._find_sensors = lambda: {
             'acpitz': {},
@@ -233,7 +233,7 @@ SwapCached:            0 kB\n"""
             'dell_smm': {'other': 34.0, 'processor_fan': 0, 'ambient': 48.0,
                          'cpu': 54.0, 'sodimm': 38.0}
         }
-        events = s.get()
+        events = await s.get()
         e = [ev for ev in events if ev.service == 'sensors.coretemp.physical_id_0']
         assert e[0].metric == 58.0
 
@@ -302,7 +302,7 @@ class TestOtherSources:
             async def connect(self):
                 pass
 
-            async def _send_command(self, command, multiline=False):
+            async def send_command(self, command, multiline=False):
                 if command.startswith('cap '):
                     return "cap multigraph dirtyconfig"
                 if command == 'list':
@@ -426,7 +426,7 @@ Reading: 0 Writing: 1 Waiting: 2\n"""
         metrics = src._parse_nginx_stats(ngstats)
         assert metrics['handled'][0] == 20649
 
-    def test_nginx_log_nohistory(self, duct_service, tmp_path):
+    async def test_nginx_log_nohistory(self, duct_service, tmp_path):
         events = []
 
         def qb(src, ev):
@@ -446,17 +446,17 @@ Reading: 0 Writing: 1 Waiting: 2\n"""
         }, qb, duct_service)
 
         src.log.tmp = str(tmp_path / 'foo.log2.lf')
-        src.get()
+        await src.get()
         assert len(events) == 0
 
         f.write('192.168.0.1 - - [16/Jan/2015:17:31:29 +0200] "GET /foo HTTP/1.1" 200 210 "-" "My Browser"\n')
         f.write('192.168.0.1 - - [16/Jan/2015:17:51:29 +0200] "GET /foo HTTP/1.1" 200 410 "-" "My Browser"\n')
         f.flush()
 
-        src.get()
+        await src.get()
         assert len(events) > 0
 
-    def test_nginx_log(self, duct_service, tmp_path):
+    async def test_nginx_log(self, duct_service, tmp_path):
         events = []
 
         def qb(src, ev):
@@ -477,7 +477,7 @@ Reading: 0 Writing: 1 Waiting: 2\n"""
         }, qb, duct_service)
 
         src.log.tmp = str(tmp_path / 'foo.log.lf')
-        src.get()
+        await src.get()
 
         ev1 = events[0]
         ev2 = events[1]
@@ -496,7 +496,7 @@ Reading: 0 Writing: 1 Waiting: 2\n"""
         f.write('192.168.0.1 - - [16/Jan/2015:17:10:34 +0200] "GET /bar HTTP/1.1" 200 410 "-" "My Browser"\n')
         f.close()
 
-        src.get()
+        await src.get()
 
         for i in events[0]:
             if i.service == 'nginx.client.192.168.0.1.requests':

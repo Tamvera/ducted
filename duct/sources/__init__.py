@@ -31,7 +31,7 @@ class Duct(Source):
         self.events = self.duct.eventCounter
         self.rtime = time.time()
 
-    def get(self):
+    async def get(self):
         sources = len(self.duct.sources)
 
         t_delta = time.time() - self.rtime

@@ -23,7 +23,8 @@ class Logger(Output):
     def __init__(self, *a, **kw):
         Output.__init__(self, *a, **kw)
         if self.config.get('logfile'):
-            self.logfile = open(self.config.get('logfile'), 'at')
+            self.logfile = open(  # pylint: disable=consider-using-with
+                self.config.get('logfile'), 'at', encoding='utf-8')
         else:
             self.logfile = None
 

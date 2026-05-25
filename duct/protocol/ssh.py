@@ -41,7 +41,7 @@ class SSHClient(object):
     def addKeyFile(self, kfile, password=None):
         """Import a private key from a file"""
         if not os.path.exists(kfile):
-            raise Exception("Key file not found: %s" % kfile)
+            raise FileNotFoundError(f"Key file not found: {kfile}")
         key = asyncssh.read_private_key(kfile, passphrase=password)
         self._client_keys.append(key)
 
@@ -78,9 +78,9 @@ class SSHClient(object):
 
         full_cmd = command
         if path:
-            full_cmd = 'PATH=%s %s' % (path, full_cmd)
+            full_cmd = f'PATH={path} {full_cmd}'
         if env:
-            prefix = ' '.join('%s=%s' % (k, v) for k, v in env.items())
+            prefix = ' '.join(f'{k}={v}' for k, v in env.items())
             full_cmd = prefix + ' ' + full_cmd
         if args:
             full_cmd += ' ' + ' '.join(args)

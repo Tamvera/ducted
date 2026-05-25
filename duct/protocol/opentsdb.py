@@ -21,8 +21,9 @@ class OpenTSDBClient(object):
     def _request(self, path, data=None, method='POST'):
         headers = {}
         if self.user:
-            authorization = b64encode('%s:%s' % (self.user, self.password)
-                                     ).decode()
+            authorization = b64encode(
+                f'{self.user}:{self.password}'.encode()
+            ).decode()
             headers['Authorization'] = ['Basic ' + authorization]
 
         return utils.HTTPRequest().getJson(

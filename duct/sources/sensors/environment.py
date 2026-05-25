@@ -49,9 +49,10 @@ class MPL115(Source):
         Source.__init__(self, *a, **kw)
 
         try:
-            import smbus
-        except ImportError:
-            raise Exception("MPL115 source requires python-smbus (smbus-cffi)")
+            import smbus  # pylint: disable=import-outside-toplevel
+        except ImportError as exc:
+            raise ImportError(
+                "MPL115 source requires python-smbus (smbus-cffi)") from exc
 
         self.address = self.config.get('address', 0x60)
         self.bus = smbus.SMBus(self.config.get('smbus', 1))

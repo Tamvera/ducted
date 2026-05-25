@@ -5,7 +5,6 @@
 
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
-import asyncio
 import logging
 
 from zope.interface import implementer
@@ -56,9 +55,9 @@ class SNMPConnection(object):
                 log.warning('SNMP error: %s', err_indication)
                 break
             if err_status:
+                idx = err_index and var_bind_table[-1][int(err_index) - 1][0]
                 log.warning('SNMP error status: %s at %s',
-                            err_status.prettyPrint(),
-                            err_index and var_bind_table[-1][int(err_index) - 1][0] or '?')
+                            err_status.prettyPrint(), idx or '?')
                 break
             for var_bind in var_bind_table:
                 results.append((var_bind[0], var_bind[1]))
@@ -89,9 +88,11 @@ class SNMP(Source):
         self.snmp = SNMPConnection(host, port, community)
 
     async def getCounter(self, soid):
+        """Walk SNMP OID and return list of (oid, value) tuples."""
         return await self.snmp.walk(soid)
 
     async def getIfMetrics(self):
+        """Retrieve interface metrics via SNMP and return Event list."""
         ifaces = await self.snmp.walk('1.3.6.1.2.1.2.2.1.2')
 
         table = [
@@ -128,9 +129,9 @@ class SNMP(Source):
 
                 events.append(self.createEvent(
                     'ok',
-                    'SNMP interface %s %s=%0.2f' % (iface, key, int(val)),
+                    f'SNMP interface {iface} {key}={int(val):0.2f}',
                     int(val),
-                    prefix='%s.%s' % (iface, key),
+                    prefix=f'{iface}.{key}',
                     aggregation=aggr,
                 ))
 
@@ -160,11 +161,11 @@ class SNMPCisco837(SNMP):
         sync_ds = int(sync_ds)
 
         events.append(self.createEvent(
-            'ok', 'SNMP ADSL sync downstream %s' % sync_ds,
+            'ok', f'SNMP ADSL sync downstream {sync_ds}',
             sync_ds, prefix='adsl.rxrate'))
 
         events.append(self.createEvent(
-            'ok', 'SNMP ADSL sync upstream %s' % sync_us,
+            'ok', f'SNMP ADSL sync upstream {sync_us}',
             sync_us, prefix='adsl.txrate'))
 
         link = await self.snmp.walk('1.3.6.1.2.1.10.94.1.1.3')
@@ -175,15 +176,15 @@ class SNMPCisco837(SNMP):
         margin = int(link['1.3.6.1.2.1.10.94.1.1.3.1.4.15']) / 10.0
 
         events.append(self.createEvent(
-            'ok', 'SNMP ADSL output power %0.2fdBm' % output,
+            'ok', f'SNMP ADSL output power {output:0.2f}dBm',
             output, prefix='adsl.outpwr'))
 
         events.append(self.createEvent(
-            'ok', 'SNMP ADSL attenuation %0.2fdB' % attn,
+            'ok', f'SNMP ADSL attenuation {attn:0.2f}dB',
             attn, prefix='adsl.attn'))
 
         events.append(self.createEvent(
-            'ok', 'SNMP ADSL noise margin %0.2fdB' % margin,
+            'ok', f'SNMP ADSL noise margin {margin:0.2f}dB',
             margin, prefix='adsl.margin'))
 
         return events

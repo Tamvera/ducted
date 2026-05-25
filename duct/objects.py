@@ -67,8 +67,8 @@ class Event(object):
         return self.hostname + '.' + self.service
 
     def __repr__(self):
-        ser = ['%s=%s' % (key, repr(val)) for key, val in dict(self).items()]
-        return "<Event %s>" % (', '.join(ser))
+        ser = [f'{key}={repr(val)}' for key, val in dict(self).items()]
+        return f"<Event {', '.join(ser)}>"
 
     def __iter__(self):
         obj = {
@@ -107,7 +107,6 @@ class Output(object):
 
     async def createClient(self):
         """Coroutine that sets up the output connection"""
-        pass
 
     def eventsReceived(self, events):
         """Receives a list of events and queues them"""
@@ -119,7 +118,6 @@ class Output(object):
 
     async def stop(self):
         """Called when the service shuts down"""
-        pass
 
 
 class Source(object):
@@ -194,12 +192,12 @@ class Source(object):
             'ssh_port', self.duct.config.get('ssh_port', 22))
 
         if not (self.ssh_key or self.ssh_keyfile or self.ssh_password):
-            raise Exception("To use SSH you must specify *one* of ssh_key,"
-                            " ssh_keyfile or ssh_password for this source"
-                            " check or globally")
+            raise ValueError("To use SSH you must specify *one* of ssh_key,"
+                             " ssh_keyfile or ssh_password for this source"
+                             " check or globally")
 
         if not self.ssh_user:
-            raise Exception("ssh_username must be set")
+            raise ValueError("ssh_username must be set")
 
         self.ssh_keydb = []
 
@@ -233,7 +231,6 @@ class Source(object):
 
     async def start(self):
         """Called when source is started"""
-        pass
 
     async def startTimer(self):
         """Starts the polling loop for this source"""
@@ -245,7 +242,7 @@ class Source(object):
         self._loop_task = asyncio.create_task(self._run_loop())
 
     async def _run_loop(self):
-        """Async polling loop — fires tick() immediately then every inter seconds"""
+        """Async polling loop — fires tick() then repeats every inter secs."""
         try:
             while True:
                 await self.tick()
@@ -255,7 +252,6 @@ class Source(object):
 
     async def stop(self):
         """Called when source is stopped"""
-        pass
 
     async def stopTimer(self):
         """Stops the polling loop for this source"""
@@ -287,14 +283,11 @@ class Source(object):
         return event
 
     async def _call_get(self):
-        """Call get(), handling both sync and async implementations"""
-        result = self.get()
-        if asyncio.iscoroutine(result):
-            return await result
-        return result
+        """Call get()"""
+        return await self.get()
 
     async def tick(self):
-        """Called for every timer tick. Calls get() and passes results to queueBack."""
+        """Called for every timer tick. Calls get() and passes results."""
         if self.sync and self.running:
             return
 
@@ -308,7 +301,7 @@ class Source(object):
         except Exception as ex:
             if self.duct.config.get('debug'):
                 tb_lines = traceback.format_exc().splitlines()
-                header = "[%s] Unhandled error: %%s" % self.service
+                header = f"[{self.service}] Unhandled error: %s"
                 log.error(header, tb_lines[0])
                 for l in tb_lines[1:]:
                     log.error(l)
@@ -333,9 +326,9 @@ class Source(object):
                      hostname=hostname or self.hostname, evtime=evtime,
                      tags=self.tags, evtype='log')
 
-    def get(self):
+    async def get(self):
         """Get method called every `self.inter` seconds.
-        Should return a list of Event objects, a coroutine, or None.
+        Should return a list of Event objects or None.
         """
         raise NotImplementedError()
 

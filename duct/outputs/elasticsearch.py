@@ -77,7 +77,7 @@ class ElasticSearch(Output):
     def transformEvent(self, event):
         """Transform an event into a format suitable for Elasticsearch"""
         data = dict(event)
-        timestamp = datetime.datetime.utcfromtimestamp(event.time)
+        timestamp = datetime.datetime.fromtimestamp(event.time, datetime.UTC)
         data['metric'] = float(event.metric)
         data['@timestamp'] = timestamp.isoformat()
         data.pop('ttl', None)

@@ -49,14 +49,14 @@ class HAProxy(Source):
             else:
                 aggr = None
 
-            return self.createEvent('ok', '%s: %s' % (desc, val), val,
+            return self.createEvent('ok', f'{desc}: {val}', val,
                                     prefix=pref, aggregation=aggr)
 
     async def get(self):
         events = []
 
         authorization = b64encode(
-            ('%s:%s' % (self.user, self.password)).encode()
+            f'{self.user}:{self.password}'.encode()
         ).decode()
 
         try:
@@ -72,38 +72,38 @@ class HAProxy(Source):
                                            prefix='state'))
         except Exception as e:
             return self.createEvent(
-                'critical', 'Connection failed: %s' % str(e), 0,
+                'critical', f'Connection failed: {e}', 0,
                 prefix='state')
 
         c = csv.DictReader(stats, delimiter=',')
         for row in c:
             if row['svname'] == 'BACKEND':
-                p = 'backends.%s' % row['pxname']
+                p = f"backends.{row['pxname']}"
                 events.append(self._ev(row['act'], 'Active servers',
-                                       '%s.active' % p))
+                                       f'{p}.active'))
             elif row['svname'] == 'FRONTEND':
-                p = 'frontends.%s' % row['pxname']
+                p = f"frontends.{row['pxname']}"
             else:
-                p = 'nodes.%s' % row['pxname']
+                p = f"nodes.{row['pxname']}"
                 events.append(self._ev(row['chkfail'], 'Check failures',
-                                       '%s.checks_failed' % p))
+                                       f'{p}.checks_failed'))
 
             events.extend([
-                self._ev(row['scur'], 'Sessions', '%s.sessions' % p, False),
-                self._ev(row['stot'], 'Session rate', '%s.session_rate' % p),
-                self._ev(row['ereq'], 'Request errors', '%s.errors_req' % p),
+                self._ev(row['scur'], 'Sessions', f'{p}.sessions', False),
+                self._ev(row['stot'], 'Session rate', f'{p}.session_rate'),
+                self._ev(row['ereq'], 'Request errors', f'{p}.errors_req'),
                 self._ev(row['econ'], 'Backend connection errors',
-                         '%s.errors_con' % p),
-                self._ev(row['eresp'], 'Response errors', '%s.errors_resp' % p),
-                self._ev(row['wretr'], 'Retries', '%s.retries' % p),
-                self._ev(row['wredis'], 'Switches', '%s.switches' % p),
-                self._ev(int(row['bin'])*8, 'Bytes in', '%s.bytes_in' % p),
-                self._ev(int(row['bout'])*8, 'Bytes out', '%s.bytes_out' % p),
-                self._ev(row['hrsp_1xx'], '1xx codes', '%s.code_1xx' % p),
-                self._ev(row['hrsp_2xx'], '2xx codes', '%s.code_2xx' % p),
-                self._ev(row['hrsp_3xx'], '3xx codes', '%s.code_3xx' % p),
-                self._ev(row['hrsp_4xx'], '4xx codes', '%s.code_4xx' % p),
-                self._ev(row['hrsp_5xx'], '5xx codes', '%s.code_5xx' % p),
+                         f'{p}.errors_con'),
+                self._ev(row['eresp'], 'Response errors', f'{p}.errors_resp'),
+                self._ev(row['wretr'], 'Retries', f'{p}.retries'),
+                self._ev(row['wredis'], 'Switches', f'{p}.switches'),
+                self._ev(int(row['bin'])*8, 'Bytes in', f'{p}.bytes_in'),
+                self._ev(int(row['bout'])*8, 'Bytes out', f'{p}.bytes_out'),
+                self._ev(row['hrsp_1xx'], '1xx codes', f'{p}.code_1xx'),
+                self._ev(row['hrsp_2xx'], '2xx codes', f'{p}.code_2xx'),
+                self._ev(row['hrsp_3xx'], '3xx codes', f'{p}.code_3xx'),
+                self._ev(row['hrsp_4xx'], '4xx codes', f'{p}.code_4xx'),
+                self._ev(row['hrsp_5xx'], '5xx codes', f'{p}.code_5xx'),
             ])
 
         return [e for e in events if e]

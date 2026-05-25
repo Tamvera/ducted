@@ -55,7 +55,7 @@ class ContainerStats(Source):
             pref = self.url
 
         containers = await HTTPRequest().getJson(
-            '%s/containers/json' % pref, socket=sock)
+            f'{pref}/containers/json', socket=sock)
 
         allStats = {}
 
@@ -63,12 +63,12 @@ class ContainerStats(Source):
             name = container.get('Names', [None])[0].lstrip('/')
 
             stats = await HTTPRequest().getJson(
-                '%s/containers/%s/stats?stream=false' % (pref, name),
+                f'{pref}/containers/{name}/stats?stream=false',
                 socket=sock
             )
 
             detail = await HTTPRequest().getJson(
-                '%s/containers/%s/json' % (pref, name), socket=sock)
+                f'{pref}/containers/{name}/json', socket=sock)
 
             env = detail['Config']['Env']
 
@@ -111,11 +111,11 @@ class ContainerStats(Source):
                 if pref.startswith('io_'):
                     events.append(self.createEvent(
                         'ok', '', val,
-                        prefix='%s.%s' % (name, pref),
+                        prefix=f'{name}.{pref}',
                         aggregation=Counter64
                     ))
                 else:
                     events.append(self.createEvent(
-                        'ok', '', val, prefix='%s.%s' % (name, pref)))
+                        'ok', '', val, prefix=f'{name}.{pref}'))
 
         return events

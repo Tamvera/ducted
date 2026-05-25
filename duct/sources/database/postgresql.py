@@ -46,9 +46,10 @@ class PostgreSQL(Source):
 
     async def get(self):
         try:
-            import asyncpg
+            import asyncpg  # pylint: disable=import-outside-toplevel
         except ImportError:
-            log.error('duct.sources.database.postgresql.PostgreSQL requires asyncpg')
+            log.error(
+                'duct.sources.database.postgresql.PostgreSQL requires asyncpg')
             return None
 
         try:
@@ -62,7 +63,7 @@ class PostgreSQL(Source):
         except Exception as e:
             return self.createEvent(
                 'critical',
-                'Connection error: %s' % str(e).replace('\n', ' '),
+                f'Connection error: {str(e).replace(chr(10), " ")}',
                 0,
                 prefix='state'
             )
@@ -83,8 +84,8 @@ class PostgreSQL(Source):
 
         try:
             rows = await conn.fetch(
-                'SELECT datname,numbackends,%s FROM pg_stat_database' % (
-                    ','.join(keys))
+                f"SELECT datname,numbackends,{','.join(keys)}"
+                " FROM pg_stat_database"
             )
 
             for row in rows:
@@ -93,17 +94,17 @@ class PostgreSQL(Source):
                 if db not in ('template0', 'template1'):
                     self.queueBack(self.createEvent(
                         'ok',
-                        'threads: %s' % threads,
+                        f'threads: {threads}',
                         threads,
-                        prefix='%s.threads' % db
+                        prefix=f'{db}.threads'
                     ))
 
                     for i, col in enumerate(list(row)[2:]):
                         self.queueBack(self.createEvent(
                             'ok',
-                            '%s: %s' % (names[i], col),
+                            f'{names[i]}: {col}',
                             col,
-                            prefix='%s.%s' % (db, names[i]),
+                            prefix=f'{db}.{names[i]}',
                             aggregation=Counter64
                         ))
 
@@ -112,7 +113,7 @@ class PostgreSQL(Source):
         except Exception as e:
             return self.createEvent(
                 'critical',
-                'Query error: %s' % str(e).replace('\n', ' '),
+                f'Query error: {str(e).replace(chr(10), " ")}',
                 0,
                 prefix='state'
             )

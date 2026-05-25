@@ -5,15 +5,15 @@
 
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
-from zope.interface import implementer
-
 import logging
 
+from zope.interface import implementer
+
+from duct.aggregators import Counter
 from duct.interfaces import IDuctSource
+from duct.objects import Source
 
 log = logging.getLogger(__name__)
-from duct.objects import Source
-from duct.aggregators import Counter
 
 
 @implementer(IDuctSource)
@@ -53,11 +53,11 @@ class Queues(Source):
         if code == 0:
             val = int(out.strip('\n').split()[-1])
             return [
-                self.createEvent('ok', '%s queue length' % self.queue, val),
+                self.createEvent('ok', f'{self.queue} queue length', val),
                 self.createEvent('ok', 'Queue rate', val, prefix='rate',
                                  aggregation=Counter)
             ]
         else:
-            msg = 'Error running %s: %s' % (self.clipath, repr(err))
+            msg = f'Error running {self.clipath}: {repr(err)}'
             log.warning(msg)
             return self.createEvent('critical', msg, None)

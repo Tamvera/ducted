@@ -29,7 +29,7 @@ class ProcessCount(Source):
 
         count = len(out.strip('\n').split('\n')) - 1
 
-        return self.createEvent('ok', 'Process count %s' % (count), count)
+        return self.createEvent('ok', f'Process count {count}', count)
 
 @implementer(IDuctSource)
 class ProcessStats(Source):
@@ -107,7 +107,7 @@ class ProcessStats(Source):
                     }
 
                 if binary != comm:
-                    key = "%s.%s" % (binary, comm)
+                    key = f"{binary}.{comm}"
                 else:
                     key = comm
 
@@ -125,25 +125,28 @@ class ProcessStats(Source):
         events = []
 
         for k, v in users.items():
-            events.append(self.createEvent('ok', 'User memory %s: %0.2fMB' % (
-                k, v['mem']), v['mem'], prefix="user.%s.mem" % k))
-            events.append(self.createEvent('ok', 'User CPU usage %s: %s%%' % (
-                k, int(v['cpu']*100)), v['cpu'], prefix="user.%s.cpu" % k))
+            events.append(self.createEvent(
+                'ok', f"User memory {k}: {v['mem']:0.2f}MB",
+                v['mem'], prefix=f'user.{k}.mem'))
+            events.append(self.createEvent(
+                'ok', f"User CPU usage {k}: {int(v['cpu']*100)}%",
+                v['cpu'], prefix=f'user.{k}.cpu'))
 
         for k, v in procs.items():
-            events.append(self.createEvent('ok', 'Process age %s: %ss' % (
-                k, v['age']), v['age'], prefix="proc.%s.age" % k))
+            events.append(self.createEvent(
+                'ok', f"Process age {k}: {v['age']}s",
+                v['age'], prefix=f'proc.{k}.age'))
             events.append(self.createEvent(
                 'ok',
-                'Process memory %s: %0.2fMB' % (k, v['mem']), v['mem'],
-                prefix="proc.%s.mem" % k
+                f"Process memory {k}: {v['mem']:0.2f}MB", v['mem'],
+                prefix=f'proc.{k}.mem'
             ))
             events.append(
                 self.createEvent(
                     'ok',
-                    'Process CPU usage %s: %s%%' % (k, int(v['cpu']*100)),
+                    f"Process CPU usage {k}: {int(v['cpu']*100)}%",
                     v['cpu'],
-                    prefix="proc.%s.cpu" % k
+                    prefix=f'proc.{k}.cpu'
                 )
             )
 

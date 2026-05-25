@@ -13,6 +13,10 @@ from duct.protocol.sflow.protocol import flows, counters
 class DatagramReceiver(asyncio.DatagramProtocol):
     """asyncio DatagramProtocol for receiving sFlow packets"""
 
+    def __init__(self):
+        super().__init__()
+        self.transport = None
+
     def connection_made(self, transport):
         self.transport = transport
 
@@ -51,12 +55,9 @@ class DatagramReceiver(asyncio.DatagramProtocol):
 
     def receive_flow(self, flow, sample, host):
         """Called when a flow is received"""
-        pass
 
     def receive_counter(self, counter, host):
         """Called when a counter is received"""
-        pass
 
     def receive_host_counter(self, counter, host):
         """Called when a host counter is received"""
-        pass

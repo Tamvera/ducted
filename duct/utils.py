@@ -5,6 +5,7 @@
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
 
+import base64
 import json
 import time
 import os
@@ -80,24 +81,24 @@ async def fork(executable, args=(), env=None, path=None, timeout=3600):
             stdout, stderr = await asyncio.wait_for(
                 proc.communicate(), timeout=timeout
             )
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError as exc:
             proc.kill()
             await proc.communicate()
             log.warning('Killed source process: Timeout %s exceeded', timeout)
-            raise Timeout("Process took longer than %s seconds" % timeout)
+            raise Timeout(
+                f"Process took longer than {timeout} seconds") from exc
 
         return stdout.decode(), stderr.decode(), proc.returncode
 
-    except FileNotFoundError as e:
-        raise Exception("Executable not found: %s" % executable) from e
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"Executable not found: {executable}") from exc
 
 
 def _make_auth_headers(user, password, headers):
     """Add Basic auth header if credentials provided"""
     if user:
-        import base64
         token = base64.b64encode(
-            ('%s:%s' % (user, password)).encode()
+            f'{user}:{password}'.encode()
         ).decode()
         headers['Authorization'] = 'Basic ' + token
     return headers
@@ -155,11 +156,12 @@ class HTTPRequest(object):
                 ) as response:
                     if response.status < 200 or response.status > 299:
                         body = await response.text()
-                        raise Exception((response.status, body))
+                        raise OSError((response.status, body))
                     return await response.text()
 
-        except aiohttp.ServerTimeoutError:
-            raise Timeout("Request took longer than %s seconds" % self.timeout)
+        except aiohttp.ServerTimeoutError as exc:
+            raise Timeout(
+                f"Request took longer than {self.timeout} seconds") from exc
 
     async def getJson(self, url, method='GET', headers=None, data=None,
                       socket=None):
@@ -177,8 +179,8 @@ class HTTPRequest(object):
 
         try:
             return json.loads(body)
-        except ValueError:
-            raise ValueError("Response was not JSON: %s" % repr(body))
+        except ValueError as exc:
+            raise ValueError(f"Response was not JSON: {repr(body)}") from exc
 
 
 class PersistentCache(object):
@@ -198,13 +200,13 @@ class PersistentCache(object):
 
     def _acquire_cache(self):
         try:
-            with open(self.location, 'r') as f:
+            with open(self.location, 'r', encoding='utf-8') as f:
                 return json.loads(f.read())
         except (IOError, OSError):
             return {}
 
     def _write_cache(self, data):
-        with open(self.location, 'w') as f:
+        with open(self.location, 'w', encoding='utf-8') as f:
             f.write(json.dumps(data))
 
     def _persist(self):

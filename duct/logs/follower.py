@@ -21,7 +21,7 @@ class LogFollower(object):
         self.logfile = logfile
         self.tmp = os.path.join(
             tmp_path,
-            '%s.lf' % self.logfile.lstrip('/').replace('/', '-')
+            f"{self.logfile.lstrip('/').replace('/', '-')}.lf"
         )
 
         self.history = history
@@ -41,16 +41,15 @@ class LogFollower(object):
     def storeLast(self):
         """Persist the current position in the file
         """
-        fi = open(self.tmp, 'wt')
-        fi.write('%s:%s' % (self.lastSize, self.lastInode))
-        fi.close()
+        with open(self.tmp, 'wt', encoding='utf-8') as fi:
+            fi.write(f'{self.lastSize}:{self.lastInode}')
 
     def readLast(self):
         """Read the latest changes in the file
         """
         if os.path.exists(self.tmp):
-            fi = open(self.tmp, 'rt')
-            ls, li = fi.read().split(':')
+            with open(self.tmp, 'rt', encoding='utf-8') as fi:
+                ls, li = fi.read().split(':')
             self.lastSize = int(ls)
             self.lastInode = int(li)
         else:
@@ -77,7 +76,7 @@ class LogFollower(object):
         if (stat.st_ino != self.lastInode) or (stat.st_size < self.lastSize):
             self.lastSize = 0
 
-        fi = open(self.logfile, 'rt')
+        fi = open(self.logfile, 'rt', encoding='utf-8')  # pylint: disable=consider-using-with
         fi.seek(self.lastSize)
 
         self.lastInode = stat.st_ino

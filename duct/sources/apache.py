@@ -71,5 +71,5 @@ class Apache(Source):
 
         metrics = self._parse_stats(stats)
 
-        return [self.createEvent('ok', 'Apache %s' % k, v, prefix=k)
+        return [self.createEvent('ok', f'Apache {k}', v, prefix=k)
                 for k, v in metrics.items()]

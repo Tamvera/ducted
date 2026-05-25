@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 
 class DuctService(object):
-    """Duct service — manages sources, outputs, event routing, and the watchdog."""
+    """Duct service — manages sources, outputs, event routing, and watchdog."""
 
     def __init__(self, config):
         self.running = False
@@ -163,13 +163,15 @@ class DuctService(object):
             if ev.state == 'ok':
                 for key, val in self.warn.get(source, []):
                     if key.match(ev.service):
-                        state = eval("service %s" % val, {'service': ev.metric})
+                        state = eval(  # pylint: disable=eval-used
+                            f"service {val}", {'service': ev.metric})
                         if state:
                             ev.state = 'warning'
 
                 for key, val in self.critical.get(source, []):
                     if key.match(ev.service):
-                        state = eval("service %s" % val, {'service': ev.metric})
+                        state = eval(  # pylint: disable=eval-used
+                            f"service {val}", {'service': ev.metric})
                         if state:
                             ev.state = 'critical'
 

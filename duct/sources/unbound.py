@@ -6,14 +6,14 @@
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
 
-from zope.interface import implementer
-
 import logging
 
+from zope.interface import implementer
+
 from duct.interfaces import IDuctSource
+from duct.objects import Source
 
 log = logging.getLogger(__name__)
-from duct.objects import Source
 
 
 @implementer(IDuctSource)

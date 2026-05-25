@@ -33,7 +33,9 @@ they collect metrics from the system. All `interval` attributes are floating
 point in seconds, this means you can check (and send to Riemann) at rates
 well below 1 second.
 
-Riemann is the default output in this configuration, but there are others.
+The ``server`` and ``port`` options above are a shorthand that starts a Riemann
+TCP output automatically. Alternatively, use the explicit ``outputs`` block
+described in the next section — this is the recommended approach.
 
 Using outputs
 =============
@@ -50,8 +52,8 @@ for example ::
           server: localhost
           port: 5555
 
-If you enable multiple outputs then the global `server`, `port` and `proto`
-options will go un-used and the default Riemann TCP transport won't start.
+When an ``outputs`` block is present the global ``server``, ``port`` and
+``proto`` shorthand is ignored.
 
 You can configure as many outputs as you like, or create your own.
 

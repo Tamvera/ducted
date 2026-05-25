@@ -25,12 +25,14 @@ class MuninClient:
         self.writer = None
 
     async def connect(self):
+        """Open connection to munin-node."""
         self.reader, self.writer = await asyncio.open_connection(
             self.host, self.port)
         # Read the banner line
         await self.reader.readline()
 
-    async def _send_command(self, command, multiline=False):
+    async def send_command(self, command, multiline=False):
+        """Send a command to munin-node and return the response."""
         self.writer.write((command + '\n').encode())
         await self.writer.drain()
 
@@ -51,6 +53,7 @@ class MuninClient:
                     return line
 
     async def disconnect(self):
+        """Close connection to munin-node."""
         if self.writer:
             self.writer.close()
             try:
@@ -84,14 +87,14 @@ class MuninNode(Source):
         await client.connect()
 
         # Announce capabilities
-        await client._send_command('cap multigraph')
+        await client.send_command('cap multigraph')
 
-        listout = await client._send_command('list')
+        listout = await client.send_command('list')
         plug_list = listout.split()
         events = []
 
         for plug in plug_list:
-            config = await client._send_command('config %s' % plug, True)
+            config = await client.send_command(f'config {plug}', True)
             plugin_config = {}
             for r in config:
                 name, val = r.split(' ', 1)
@@ -99,30 +102,29 @@ class MuninNode(Source):
                     metric, key = name.split('.')
 
                     if key in ['type', 'label', 'min', 'info']:
-                        plugin_config['%s.%s.%s' % (plug, metric, key)] = val
+                        plugin_config[f'{plug}.{metric}.{key}'] = val
 
                 else:
                     if name == 'graph_category':
-                        plugin_config['%s.category' % plug] = val
+                        plugin_config[f'{plug}.category'] = val
 
-            category = plugin_config.get('%s.category' % plug, 'system')
+            category = plugin_config.get(f'{plug}.category', 'system')
 
-            metrics = await client._send_command('fetch %s' % plug, True)
+            metrics = await client.send_command(f'fetch {plug}', True)
             for m in metrics:
                 name, val = m.split(' ', 1)
                 if name != 'multigraph':
                     metric, key = name.split('.')
-                    base = '%s.%s' % (plug, metric)
-                    m_type = plugin_config.get('%s.type' % base, 'GAUGE')
+                    base = f'{plug}.{metric}'
+                    m_type = plugin_config.get(f'{base}.type', 'GAUGE')
 
                     try:
                         val = float(val)
-                    except Exception:
+                    except ValueError:
                         continue
 
-                    base = '%s.%s' % (plug, metric)
-                    info = plugin_config.get('%s.info' % base, base)
-                    prefix = '%s.%s' % (category, base)
+                    info = plugin_config.get(f'{base}.info', base)
+                    prefix = f'{category}.{base}'
 
                     if m_type == 'COUNTER':
                         events.append(self.createEvent('ok', info, val,

@@ -10,13 +10,13 @@ import argparse
 import asyncio
 import logging
 import signal
-import sys
 
 from duct.configuration import ConfigFile
 from duct.service import DuctService
 
 
 def main():
+    """Entry point for the duct daemon."""
     parser = argparse.ArgumentParser(
         description='Duct — A monitoring agent and event processor'
     )

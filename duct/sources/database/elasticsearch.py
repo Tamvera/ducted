@@ -96,7 +96,7 @@ class ElasticSearch(Source):
             for mname, m in ms.items():
                 events.append(self.createEvent(
                     'ok', mname, m,
-                    prefix='nodes.%s.%s' % (node, mname),
+                    prefix=f'nodes.{node}.{mname}',
                     aggregation=Counter64
                 ))
 

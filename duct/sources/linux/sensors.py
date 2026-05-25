@@ -36,7 +36,7 @@ class Sensors(Source):
                 mon_path = os.path.join(path, hwmons)
                 name_path = os.path.join(mon_path, 'name')
                 if os.path.exists(name_path):
-                    with open(name_path, 'rt') as name_file:
+                    with open(name_path, 'rt', encoding='utf-8') as name_file:
                         name = name_file.read().strip()
 
                 else:
@@ -58,7 +58,8 @@ class Sensors(Source):
                             sensor_map[tn] = [None, 0]
 
                         if mon_file.endswith('_input'):
-                            with open(sensor_path, 'rt') as value_file:
+                            with open(sensor_path, 'rt',
+                                      encoding='utf-8') as value_file:
                                 value = int(value_file.read().strip())
 
                                 if mon_file.startswith('temp'):
@@ -67,7 +68,8 @@ class Sensors(Source):
                                 sensor_map[tn][1] = value
 
                         if mon_file.endswith('_label'):
-                            with open(sensor_path, 'rt') as value_file:
+                            with open(sensor_path, 'rt',
+                                      encoding='utf-8') as value_file:
                                 sensor_name = value_file.read().strip()
                                 sensor_map[tn][0] = sensor_name
 
@@ -77,7 +79,7 @@ class Sensors(Source):
                         sensors[name][filtered_name] = value
         return sensors
 
-    def get(self):
+    async def get(self):
         sensors = self._find_sensors()
 
         events = []
@@ -86,10 +88,9 @@ class Sensors(Source):
             for sensor, val in v.items():
                 events.append(
                     self.createEvent('ok',
-                                     'Sensor %s:%s - %s' % (
-                                         adapter, sensor, val),
+                                     f'Sensor {adapter}:{sensor} - {val}',
                                      val,
-                                     prefix='%s.%s' % (adapter, sensor,)))
+                                     prefix=f'{adapter}.{sensor}'))
         return events
 
 @implementer(IDuctSource)
@@ -153,10 +154,9 @@ class LMSensors(Source):
             for sensor, val in v.items():
                 events.append(
                     self.createEvent('ok',
-                                     'Sensor %s:%s - %s' % (
-                                         adapter, sensor, val),
+                                     f'Sensor {adapter}:{sensor} - {val}',
                                      val,
-                                     prefix='%s.%s' % (adapter, sensor,)))
+                                     prefix=f'{adapter}.{sensor}'))
 
         return events
 
@@ -236,10 +236,9 @@ class SMART(Source):
             for sensor, val in stats.items():
                 events.append(
                     self.createEvent('ok',
-                                     'Attribute %s:%s - %s' % (
-                                         disk, sensor, val),
+                                     f'Attribute {disk}:{sensor} - {val}',
                                      val,
-                                     prefix='%s.%s' % (disk, sensor,))
+                                     prefix=f'{disk}.{sensor}')
                 )
 
         return events

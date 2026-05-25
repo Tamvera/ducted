@@ -25,6 +25,7 @@ class sFlowReceiver(server.DatagramReceiver):
     """sFlow datagram protocol"""
 
     def __init__(self, source):
+        super().__init__()
         self.source = source
         self.lookup = source.config.get('dnslookup', True)
         self.counterCache = {}
@@ -56,9 +57,9 @@ class sFlowReceiver(server.DatagramReceiver):
                 m = ((cbytes / float(btotal)) * deltaIn) / tDelta
                 self.source.queueBack(self.source.createEvent(
                     'ok',
-                    'sFlow if:%s addr:%s inOctets/sec %0.2f' % (idx, ip, m),
+                    f'sFlow if:{idx} addr:{ip} inOctets/sec {m:0.2f}',
                     m,
-                    prefix='%s.ip.%s.%s' % (idx, ip, direction),
+                    prefix=f'{idx}.ip.{ip}.{direction}',
                     hostname=host,
                 ))
 
@@ -68,9 +69,9 @@ class sFlowReceiver(server.DatagramReceiver):
                 if p:
                     self.source.queueBack(self.source.createEvent(
                         'ok',
-                        'sFlow if:%s port:%s inOctets/sec %0.2f' % (idx, p, m),
+                        f'sFlow if:{idx} port:{p} inOctets/sec {m:0.2f}',
                         m,
-                        prefix='%s.port.%s.%s' % (idx, p, direction),
+                        prefix=f'{idx}.port.{p}.{direction}',
                         hostname=host,
                     ))
 
@@ -124,15 +125,15 @@ class sFlowReceiver(server.DatagramReceiver):
                 self.source.queueBack([
                     self.source.createEvent(
                         'ok',
-                        'sFlow index %s inOctets/sec %0.2f' % (idx, inRate),
+                        f'sFlow index {idx} inOctets/sec {inRate:0.2f}',
                         inRate,
-                        prefix='%s.inOctets' % idx, hostname=host,
+                        prefix=f'{idx}.inOctets', hostname=host,
                     ),
                     self.source.createEvent(
                         'ok',
-                        'sFlow index %s outOctets/sec %0.2f' % (idx, outRate),
+                        f'sFlow index {idx} outOctets/sec {outRate:0.2f}',
                         outRate,
-                        prefix='%s.outOctets' % idx, hostname=host,
+                        prefix=f'{idx}.outOctets', hostname=host,
                     ),
                 ])
             else:
@@ -164,8 +165,12 @@ class sFlow(Source):
     :type dnslookup: bool.
     """
 
-    def get(self):
-        pass
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self._transport = None
+
+    async def get(self):
+        """sFlow does not poll; data arrives via UDP."""
 
     async def startTimer(self):
         port = self.config.get('port', 6343)
@@ -177,6 +182,6 @@ class sFlow(Source):
         log.info('sFlow UDP server listening on port %s', port)
 
     async def stopTimer(self):
-        if hasattr(self, '_transport') and self._transport:
+        if self._transport:
             self._transport.close()
             self._transport = None

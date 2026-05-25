@@ -36,18 +36,18 @@ class Prometheus(Output):
         self.metric_table = {}
         self._runner = None
 
-    async def _handle_metrics(self, request):
+    async def _handle_metrics(self, _request):
         content = ''.join(
-            '%s %s\n' % (k, v) for k, v in self.metric_table.items()
+            f'{k} {v}\n' for k, v in self.metric_table.items()
         )
         return web.Response(text=content, content_type='text/plain')
 
-    async def _handle_root(self, request):
+    async def _handle_root(self, _request):
         body = (
             '<html><head><title>Duct</title></head>'
             '<body><h1>Duct</h1>'
-            '<p><a href="/%s">Metrics</a></p>'
-            '</body></html>' % self.metric_path
+            f'<p><a href="/{self.metric_path}">Metrics</a></p>'
+            '</body></html>'
         )
         return web.Response(text=body, content_type='text/html')
 
@@ -72,8 +72,8 @@ class Prometheus(Output):
             metric_name = self.prefix + event.service.replace('.', '_')
             if event.attributes:
                 labels = ','.join(
-                    '%s="%s"' % (k, v)
+                    f'{k}="{v}"'
                     for k, v in event.attributes.items()
                 )
-                metric_name += '{%s}' % labels
+                metric_name += f'{{{labels}}}'
             self.metric_table[metric_name] = event.metric

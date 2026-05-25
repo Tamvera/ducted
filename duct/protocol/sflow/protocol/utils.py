@@ -38,4 +38,4 @@ class IPv4Address(object):
         return str(self)
 
     def __repr__(self):
-        return "<IPv4Address ip=\"%s\">" % str(self)
+        return f'<IPv4Address ip="{str(self)}">'

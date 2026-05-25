@@ -13,6 +13,8 @@ from base64 import b64encode
 from duct import utils
 
 class ElasticSearch(object):
+    """Elasticsearch HTTP API client"""
+
     def __init__(self, url='http://localhost:9200', user=None, password=None,
                  index='duct-%Y.%m.%d'):
         self.url = url.rstrip('/')
@@ -27,7 +29,7 @@ class ElasticSearch(object):
         headers = {}
         if self.user:
             authorization = b64encode(
-                ('%s:%s' % (self.user, self.password)).encode()
+                f'{self.user}:{self.password}'.encode()
             ).decode()
             headers['Authorization'] = 'Basic ' + authorization
 
@@ -52,7 +54,7 @@ class ElasticSearch(object):
         """Insert an index
         """
         return await self._request(
-            '/%s/%s/%s' % (self._get_index(), index_type, self._gen_id()),
+            f'/{self._get_index()}/{index_type}/{self._gen_id()}',
             json.dumps(data), 'PUT')
 
     async def bulkIndex(self, rows):

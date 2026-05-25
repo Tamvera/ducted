@@ -6,6 +6,8 @@
 """
 
 
+import logging
+
 from construct import (BitStruct,
                        Bits,
                        Bytes,
@@ -19,12 +21,10 @@ from construct import (BitStruct,
                        UBInt8,
                        UBInt16,
                        UBInt32)
-
 from construct.adapters import MappingError
 
 from duct.protocol.sflow.protocol import utils
 
-import logging
 log = logging.getLogger(__name__)
 
 

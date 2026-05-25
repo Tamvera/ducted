@@ -87,6 +87,7 @@ class OpenTSDB(Output):
         return data
 
     async def sendEvents(self, events):
+        """Send a list of events to OpenTSDB"""
         return await self.client.put(
             [self.transformEvent(ev) for ev in events])
 

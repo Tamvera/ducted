@@ -45,7 +45,7 @@ class HTTP(Source):
     async def get(self):
 
         method = self.config.get('method', 'GET')
-        url = self.config.get('url', 'http://%s/' % self.hostname)
+        url = self.config.get('url', f'http://{self.hostname}/')
         match = self.config.get('match', None)
         ua = self.config.get('useragent', 'Duct HTTP checker')
         timeout = self.config.get('timeout', 60)
@@ -59,13 +59,13 @@ class HTTP(Source):
             log.warning('[%s] Request timeout', url)
             t_delta = (time.time() - t0) * 1000
             return self.createEvent('critical',
-                                    '%s - timeout' % url, t_delta,
+                                    f'{url} - timeout', t_delta,
                                     prefix="latency")
         except Exception as e:
             log.warning('[%s] Request error %s', url, e)
             t_delta = (time.time() - t0) * 1000
             return self.createEvent('critical',
-                                    '%s - %s' % (url, e),
+                                    f'{url} - {e}',
                                     t_delta,
                                     prefix="latency")
 
@@ -79,7 +79,7 @@ class HTTP(Source):
         else:
             state = 'ok'
 
-        return self.createEvent(state, 'Latency to %s' % url,
+        return self.createEvent(state, f'Latency to {url}',
                                 t_delta, prefix="latency")
 
 @implementer(IDuctSource)
@@ -116,14 +116,14 @@ class Ping(Source):
             except Exception:
                 loss, latency = 100, None
 
-            event = [self.createEvent('ok', '%s%% loss to %s' % (loss, host),
+            event = [self.createEvent('ok', f'{loss}% loss to {host}',
                                       loss, prefix="loss")]
 
             if latency:
-                event.append(self.createEvent('ok', 'Latency to %s' % host,
+                event.append(self.createEvent('ok', f'Latency to {host}',
                                               latency, prefix="latency"))
         else:
-            event = [self.createEvent('critical', 'Unable to resolve %s' % host,
+            event = [self.createEvent('critical', f'Unable to resolve {host}',
                                       100, prefix="loss")]
 
         return event
