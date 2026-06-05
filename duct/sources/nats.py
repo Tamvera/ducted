@@ -33,7 +33,7 @@ class Nats(Source):
     :param topics: List of topics to subscribe to (default: [">"])
     :type topics: list
 
-    :param format: Serialisation format — json, senml-json, senml-cbor (default: senml-json)
+    :param format: Serialisation format - json, senml-json, senml-cbor (default: senml-json)
     :type format: str
 
     :param jetstream: Subscribe via JetStream with a durable consumer (default: false)

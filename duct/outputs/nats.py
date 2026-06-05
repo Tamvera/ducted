@@ -29,7 +29,7 @@ class Nats(Output):
     :param prefix: Prefix added to topics (default: "")
     :type prefix: str
 
-    :param format: Serialisation format — json, senml-json, senml-cbor (default: senml-json)
+    :param format: Serialisation format - json, senml-json, senml-cbor (default: senml-json)
     :type format: str
 
     :param interval: Queue drain interval in seconds (default: 1.0)

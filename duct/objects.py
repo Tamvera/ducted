@@ -242,7 +242,7 @@ class Source(object):
         self._loop_task = asyncio.create_task(self._run_loop())
 
     async def _run_loop(self):
-        """Async polling loop — fires tick() then repeats every inter secs."""
+        """Async polling loop - fires tick() then repeats every inter secs."""
         try:
             while True:
                 await self.tick()

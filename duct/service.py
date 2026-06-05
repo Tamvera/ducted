@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 
 class DuctService(object):
-    """Duct service — manages sources, outputs, event routing, and watchdog."""
+    """Duct service - manages sources, outputs, event routing, and watchdog."""
 
     def __init__(self, config):
         self.running = False

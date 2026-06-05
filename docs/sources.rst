@@ -101,8 +101,8 @@ Duct for others to benefit from!
 Handling asynchronous tasks
 ===========================
 
-Duct is built on Python asyncio. Sources that perform I/O — network checks,
-subprocess execution, database queries — must be coroutines (``async def``).
+Duct is built on Python asyncio. Sources that perform I/O - network checks,
+subprocess execution, database queries - must be coroutines (``async def``).
 
 The simplest example of a source which executes an external process is the
 ProcessCount check::

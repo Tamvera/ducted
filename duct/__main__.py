@@ -1,5 +1,5 @@
 """
-Duct — asyncio entry point
+Duct - asyncio entry point
 
 Usage:
     ductd -c duct.yml
@@ -18,7 +18,7 @@ from duct.service import DuctService
 def main():
     """Entry point for the duct daemon."""
     parser = argparse.ArgumentParser(
-        description='Duct — A monitoring agent and event processor'
+        description='Duct - A monitoring agent and event processor'
     )
     parser.add_argument(
         '-c', '--config',
