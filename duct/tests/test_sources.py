@@ -2,17 +2,20 @@ import asyncio
 import json
 import os
 import socket
+import unittest.mock as mock
 
 import aiohttp.web
 import pytest
 import pytest_asyncio
 
+import duct.sources.nats as nats_src_mod
 from duct.sources.linux import basic, process, sensors
 from duct.sources import riak, nginx, network, apache, munin, haproxy, nats
 from duct.sources.database import elasticsearch, postgresql, memcache
 from duct.service import DuctService
 from duct.tests import globs
-from duct.protocol.senml import senml_to_event
+from duct.protocol.senml import event_to_senml, event_to_senml_cbor, event_to_json
+from duct.objects import Event
 
 from .helpers import TestConfig, FakeNATS
 
@@ -573,22 +576,188 @@ class TestRiakSources:
 # NATS sources
 # ---------------------------------------------------------------------------
 
+def _make_source_event(**overrides):
+    defaults = dict(
+        state="ok", service="cpu.load", description="load avg",
+        metric=0.42, ttl=60.0, tags=["prod"],
+        hostname="sender.host", attributes={"core": "0"},
+        evtime=1_700_000_000.0,
+    )
+    defaults.update(overrides)
+    return Event(**defaults)
+
+
 class TestNATSSource:
     @pytest.mark.asyncio
     async def test_nats_source_senml(self, duct_service):
-        nats.NATS = FakeNATS
-        nats.nats = FakeNATS()
+        nats_src_mod.nats = FakeNATS()
 
         event_queue = []
-        def _nats_qb(source, event):
-            event_queue.extend(event)
+        def _qb(source, events):
+            event_queue.extend(events)
 
-        source = nats.Nats({"service": "test", "topics": ["test"]}, _nats_qb, duct_service)
-
+        source = nats_src_mod.Nats({"service": "test", "topics": ["sensors.>"]}, _qb, duct_service)
         await source.startTimer()
 
-        await source.nc.publish('test.load', b'{"n": "test.load", "t": 1780677400.1510267, "v": 0.17}')
+        ev = _make_source_event(service="cpu.load", hostname="sender.host")
+        await source.nc.publish("sensors.cpu.load", event_to_senml(ev))
 
-        assert len(event_queue) > 0
+        assert len(event_queue) == 1
+        assert event_queue[0].service == "cpu.load"
+        assert event_queue[0].hostname == "sender.host"
 
-        assert event_queue[0].service == "test.load"
+    @pytest.mark.asyncio
+    async def test_nats_source_senml_full_roundtrip(self, duct_service):
+        nats_src_mod.nats = FakeNATS()
+
+        event_queue = []
+        def _qb(source, events):
+            event_queue.extend(events)
+
+        source = nats_src_mod.Nats({"service": "test", "topics": ["metrics.>"]}, _qb, duct_service)
+        await source.startTimer()
+
+        ev = _make_source_event(state="warning", description="spiking",
+                                tags=["a", "b"], attributes={"zone": "eu"})
+        await source.nc.publish("metrics.cpu.load", event_to_senml(ev))
+
+        assert len(event_queue) == 1
+        decoded = event_queue[0]
+        assert decoded.state == "warning"
+        assert decoded.description == "spiking"
+        assert decoded.tags == ["a", "b"]
+        assert decoded.attributes["zone"] == "eu"
+        assert decoded.metric == pytest.approx(ev.metric)
+
+    @pytest.mark.asyncio
+    async def test_nats_source_cbor(self, duct_service):
+        nats_src_mod.nats = FakeNATS()
+
+        event_queue = []
+        def _qb(source, events):
+            event_queue.extend(events)
+
+        source = nats_src_mod.Nats(
+            {"service": "test", "topics": ["sensors.>"], "format": "senml-cbor"},
+            _qb, duct_service,
+        )
+        await source.startTimer()
+
+        ev = _make_source_event(service="disk.read", metric=1024.0)
+        await source.nc.publish("sensors.disk.read", event_to_senml_cbor(ev))
+
+        assert len(event_queue) == 1
+        assert event_queue[0].service == "disk.read"
+        assert event_queue[0].metric == pytest.approx(1024.0)
+
+    @pytest.mark.asyncio
+    async def test_nats_source_json(self, duct_service):
+        nats_src_mod.nats = FakeNATS()
+
+        event_queue = []
+        def _qb(source, events):
+            event_queue.extend(events)
+
+        source = nats_src_mod.Nats(
+            {"service": "test", "topics": ["sensors.>"], "format": "json"},
+            _qb, duct_service,
+        )
+        await source.startTimer()
+
+        ev = _make_source_event(service="net.rx", metric=999.0, hostname="h")
+        await source.nc.publish("sensors.net.rx", event_to_json(ev))
+
+        assert len(event_queue) == 1
+        assert event_queue[0].service == "net.rx"
+        assert event_queue[0].hostname == "h"
+
+    @pytest.mark.asyncio
+    async def test_nats_source_malformed_message_does_not_crash(self, duct_service):
+        nats_src_mod.nats = FakeNATS()
+
+        event_queue = []
+        def _qb(source, events):
+            event_queue.extend(events)
+
+        source = nats_src_mod.Nats({"service": "test", "topics": ["sensors.>"]}, _qb, duct_service)
+        await source.startTimer()
+
+        await source.nc.publish("sensors.foo", b"this is not valid json or senml")
+
+        assert len(event_queue) == 0
+
+    @pytest.mark.asyncio
+    async def test_nats_source_multiple_messages(self, duct_service):
+        nats_src_mod.nats = FakeNATS()
+
+        event_queue = []
+        def _qb(source, events):
+            event_queue.extend(events)
+
+        source = nats_src_mod.Nats({"service": "test", "topics": ["sensors.>"]}, _qb, duct_service)
+        await source.startTimer()
+
+        for i in range(5):
+            ev = _make_source_event(service=f"metric.{i}", metric=float(i))
+            await source.nc.publish(f"sensors.host.metric.{i}", event_to_senml(ev))
+
+        assert len(event_queue) == 5
+        services = {e.service for e in event_queue}
+        assert services == {f"metric.{i}" for i in range(5)}
+
+    @pytest.mark.asyncio
+    async def test_nats_source_jetstream(self, duct_service):
+        nats_src_mod.nats = FakeNATS()
+
+        event_queue = []
+        def _qb(source, events):
+            event_queue.extend(events)
+
+        source = nats_src_mod.Nats(
+            {"service": "test", "topics": ["stream.>"], "jetstream": True, "durable": "myapp"},
+            _qb, duct_service,
+        )
+        await source.startTimer()
+
+        # For JetStream, the FakeJetStream shares the nc subscription map.
+        # Publish via the fake JS to trigger the callback.
+        ev = _make_source_event(service="temp", metric=23.5)
+        await source.nc.js.publish("stream.temp", event_to_senml(ev))
+
+        assert len(event_queue) == 1
+        assert event_queue[0].service == "temp"
+
+    def test_nats_source_tls_context_none_when_unconfigured(self, duct_service):
+        source = nats_src_mod.Nats({"service": "test"}, lambda *a: None, duct_service)
+        assert source._build_tls_context() is None
+
+    def test_nats_source_tls_context_built(self, duct_service):
+        source = nats_src_mod.Nats({
+            "service": "test",
+            "tls_ca_file": "/ca.pem",
+            "tls_cert_file": "/cert.pem",
+            "tls_key_file": "/key.pem",
+        }, lambda *a: None, duct_service)
+        mock_ctx = mock.MagicMock()
+        with mock.patch("ssl.create_default_context", return_value=mock_ctx):
+            ctx = source._build_tls_context()
+        assert ctx is mock_ctx
+        mock_ctx.load_verify_locations.assert_called_once_with(cafile="/ca.pem")
+        mock_ctx.load_cert_chain.assert_called_once_with(certfile="/cert.pem", keyfile="/key.pem")
+
+    @pytest.mark.asyncio
+    async def test_nats_source_credentials_passed(self, duct_service):
+        captured = {}
+
+        class CapturingFakeNATS(FakeNATS):
+            async def connect(self, servers=[], **kw):
+                captured.update(kw)
+                return self
+
+        nats_src_mod.nats = CapturingFakeNATS()
+        source = nats_src_mod.Nats(
+            {"service": "test", "credentials_file": "/creds.creds"},
+            lambda *a: None, duct_service,
+        )
+        await source.startTimer()
+        assert captured.get("user_credentials") == "/creds.creds"
