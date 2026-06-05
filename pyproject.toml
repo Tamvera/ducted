@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ducted"
-version = "2.0"
+version = "2.1"
 description = "A monitoring agent and event processor"
 license = { text = "MIT" }
 authors = [{ name = "Colin Alston", email = "colin@tamvera.com" }]
