@@ -35,7 +35,7 @@ well below 1 second.
 
 The ``server`` and ``port`` options above are a shorthand that starts a Riemann
 TCP output automatically. Alternatively, use the explicit ``outputs`` block
-described in the next section — this is the recommended approach.
+described in the next section - this is the recommended approach.
 
 Using outputs
 =============

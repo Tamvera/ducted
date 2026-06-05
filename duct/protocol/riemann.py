@@ -123,7 +123,7 @@ class RiemannTCPClient(RiemannProtobufMixin):
                 )
                 log.info('Connected to Riemann on %s:%s', host, self.port)
             except (ConnectionRefusedError, OSError) as e:
-                log.warning('Failed to connect to Riemann %s:%s — %s',
+                log.warning('Failed to connect to Riemann %s:%s - %s',
                             host, self.port, e)
                 self._next_host()
                 self.reader = self.writer = None
@@ -168,7 +168,7 @@ class RiemannTCPClient(RiemannProtobufMixin):
             self.pressure -= 1
             return msg
         except Exception as e:
-            log.warning('Riemann send error: %s — reconnecting', e)
+            log.warning('Riemann send error: %s - reconnecting', e)
             self.pressure -= 1
             await self.disconnect()
             asyncio.create_task(self.reconnect_loop())

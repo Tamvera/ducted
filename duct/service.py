@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 
 
 class DuctService(object):
-    """Duct service — manages sources, outputs, event routing, and watchdog."""
+    """Duct service - manages sources, outputs, event routing, and watchdog."""
 
     def __init__(self, config):
         self.running = False
@@ -58,6 +58,7 @@ class DuctService(object):
 
     async def setupOutputs(self, config):
         """Set up output processors"""
+
         if self.server:
             if self.proto == 'tcp':
                 defaultOutput = {
@@ -76,6 +77,7 @@ class DuctService(object):
             outputs = config.get('outputs', [])
 
         for output in outputs:
+            log.info("Setting up %s", output['output'])
             if 'debug' not in output:
                 output['debug'] = self.debug
 
@@ -131,6 +133,7 @@ class DuctService(object):
         sources = config.get('sources', [])
 
         for source in sources:
+            log.info("Setting up %s::%s", source['source'], source['service'])
             src = self.createSource(source)
             self.setupTriggers(source, src)
             self.sources.append(src)

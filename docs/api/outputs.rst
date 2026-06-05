@@ -22,6 +22,13 @@ duct.outputs.logger
    :members:
    :show-inheritance:
 
+duct.outputs.nats
+======================
+
+.. automodule:: duct.outputs.nats
+   :members:
+   :show-inheritance:
+
 duct.outputs.opentsdb
 ============================
 

@@ -38,7 +38,7 @@ contextmanager-decorators=contextlib.contextmanager
 logging-modules=logging
 
 [FORMAT]
-max-line-length=80
+max-line-length=160
 ignore-long-lines=^\s*(# )?<?https?://\S+>?$
 single-line-if-stmt=no
 max-module-lines=1000

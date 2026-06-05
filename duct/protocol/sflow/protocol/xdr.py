@@ -53,5 +53,5 @@ class Unpacker:
         """Return remaining unpacked bytes."""
         return self._buf[self._pos:]
 
-    # typo in original sFlow counter struct — treat as unsigned int
+    # typo in original sFlow counter struct - treat as unsigned int
     unpack_unsigend = unpack_uint

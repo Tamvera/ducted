@@ -13,7 +13,6 @@ from typing import Optional
 
 import yaml
 from pydantic import BaseModel, ConfigDict, ValidationError
-from pydantic import field_validator
 
 log = logging.getLogger(__name__)
 
