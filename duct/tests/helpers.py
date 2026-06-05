@@ -1,8 +1,8 @@
 """
 Helper classes for tests
 """
-from duct.configuration import ConfigFile, DuctConfig
-
+from duct.configuration import ConfigFile
+# pylint: disable=import-outside-toplevel,super-init-not-called,unused-argument,missing-function-docstring,attribute-defined-outside-init
 
 class TestConfig(ConfigFile):
     """Test config which accepts a plain dict"""
@@ -34,6 +34,7 @@ class FakeJetStream:
         self.nc = nc
 
     async def publish(self, topic, payload):
+        "Publish a message to the fake queue"
         self.nc.messages.append((topic, payload))
         from nats.aio.msg import Msg
         for sub, cb in list(self.nc.subs.items()):
@@ -41,6 +42,7 @@ class FakeJetStream:
                 await cb(Msg(self.nc, subject=topic, data=payload))
 
     async def subscribe(self, topic, durable=None, cb=None):
+        "Subscribe to a fake topic"
         self.nc.subs[topic] = cb
         return object()
 
@@ -55,6 +57,7 @@ class FakeNATS:
         self.subs = {}
 
     async def publish(self, topic, message):
+        "Publiush a message to the fake queue"
         self.messages.append((topic, message))
         from nats.aio.msg import Msg
         for sub, cb in list(self.subs.items()):
@@ -62,10 +65,12 @@ class FakeNATS:
                 await cb(Msg(self, subject=topic, data=message))
 
     async def subscribe(self, topic, cb=None):
+        "Subscribe to a fake topic"
         self.subs[topic] = cb
         return object()
 
     def jetstream(self):
+        "Fake jetstream endpoint"
         if not hasattr(self, "js"):
             self.js = FakeJetStream(self)
         return self.js

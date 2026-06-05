@@ -7,6 +7,8 @@
 
 import json
 
+import cbor2
+
 from duct.objects import Event
 
 
@@ -97,13 +99,11 @@ def senml_to_event(data: bytes | str, default_ttl: float = 60.0) -> Event:
 
 def event_to_senml_cbor(event: Event) -> bytes:
     """Serialise a Duct Event to SenML-CBOR bytes."""
-    import cbor2
     return cbor2.dumps(event_to_senml_pack(event))
 
 
 def senml_cbor_to_event(data: bytes, default_ttl: float = 60.0) -> Event:
     """Deserialise SenML-CBOR bytes to a Duct Event."""
-    import cbor2
     return senml_pack_to_event(cbor2.loads(data), default_ttl)
 
 

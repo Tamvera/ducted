@@ -9,13 +9,14 @@ import ssl
 
 from zope.interface import implementer
 
+import nats
+from nats.aio.client import Client as NATS
+
 from duct.objects import Source
 from duct.protocol.senml import senml_to_event, senml_cbor_to_event, json_to_event
 
 from duct.interfaces import IDuctSource
 
-import nats
-from nats.aio.client import Client as NATS
 
 log = logging.getLogger(__name__)
 
@@ -100,7 +101,6 @@ class Nats(Source):
 
     async def get(self):
         "Uses async queue"
-        pass
 
     async def startTimer(self):
         log.info("Connecting to NATS: %s", self.servers)

@@ -8,11 +8,12 @@ import logging
 import asyncio
 import ssl
 
+import nats
+from nats.aio.client import Client as NATS
+
 from duct.objects import Output, Event
 from duct.protocol.senml import event_to_senml, event_to_senml_cbor, event_to_json
 
-import nats
-from nats.aio.client import Client as NATS
 
 log = logging.getLogger(__name__)
 
@@ -119,6 +120,7 @@ class Nats(Output):
         return self.transformers[self.format](event)
 
     async def sendEvents(self, events: list[Event]):
+        "Send batches of events to NATS or JetStream"
         for ev in events:
             if self.prefix:
                 topic = f"{self.prefix}.{ev.hostname}.{ev.service}"
