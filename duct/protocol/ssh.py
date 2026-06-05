@@ -2,7 +2,7 @@
 .. module:: ssh
    :synopsis: Provides a simplified SSH client interface via asyncssh
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 import os
 import asyncio

@@ -3,7 +3,7 @@
    :platform: Unix
    :synopsis: A source module for apache stats
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 
 from zope.interface import implementer

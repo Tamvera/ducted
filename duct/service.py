@@ -2,7 +2,7 @@
 .. module:: service
    :synopsis: Core service classes
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 
 import time

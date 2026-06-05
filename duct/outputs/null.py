@@ -2,7 +2,7 @@
 .. module:: null
    :synopsis: Null event output. Does nothing
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 from duct.objects import Output
 

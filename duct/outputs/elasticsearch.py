@@ -2,7 +2,7 @@
 .. module:: elasticsearch
    :synopsis: Elasticsearch event output
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 import asyncio
 import datetime

@@ -3,7 +3,7 @@
    :platform: Unix
    :synopsis: A source module which provides an sflow collector
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 import asyncio
 import time

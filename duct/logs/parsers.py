@@ -2,7 +2,7 @@
 .. module:: parsers
    :synopsis: Log line parser classes
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 
 import re

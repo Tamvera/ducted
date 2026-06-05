@@ -4,7 +4,7 @@
    :synopsis: Provides MuninNode source which can get events from the
               munin-node protocol.
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 import asyncio
 

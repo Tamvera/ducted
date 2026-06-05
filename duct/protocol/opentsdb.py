@@ -2,7 +2,7 @@
 .. module:: opentsdb
    :synopsis: OpenTSDB protocol module
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 import json
 from base64 import b64encode

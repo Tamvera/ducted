@@ -2,7 +2,7 @@
 .. module:: bosun
    :synopsis: Bosun output
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 import json
 import base64

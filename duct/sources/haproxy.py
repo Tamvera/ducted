@@ -3,7 +3,7 @@
    :platform: Unix
    :synopsis: A source module for haproxy stats
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 import csv
 from base64 import b64encode

@@ -2,7 +2,7 @@
 .. module:: riemann
    :synopsis: Riemann output
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 import asyncio
 import logging

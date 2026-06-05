@@ -3,7 +3,7 @@
    :platform: unix
    :synopsis: Provides checks for system sensors and SMART devices
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 import os
 

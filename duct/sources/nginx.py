@@ -3,7 +3,7 @@
    :platform: Unix
    :synopsis: A source module for nginx stats
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 # This is necessary in this module
 # pylint: disable=W0201

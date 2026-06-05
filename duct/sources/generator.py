@@ -3,7 +3,7 @@
    :platform: Any
    :synopsis: A function generator source module
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 import math
 

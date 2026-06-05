@@ -2,7 +2,7 @@
 .. module:: elasticsearch
    :synopsis: Elasticsearch protocol module
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 
 import time

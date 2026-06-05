@@ -2,7 +2,7 @@
 .. module:: utils
    :synopsis: Utility wrappers for HTTP calls and process forks
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 
 import base64

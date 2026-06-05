@@ -3,7 +3,7 @@
    :platform: unix
    :synopsis: Some monitoring stuff for IPSEC tunnels
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 from zope.interface import implementer
 

@@ -2,7 +2,7 @@
 .. module:: utils
    :synopsis: SFlow protocol utility functions
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 import struct
 import socket

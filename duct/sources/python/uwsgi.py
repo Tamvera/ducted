@@ -3,7 +3,7 @@
    :platform: Any
    :synopsis: Reads UWSGI stats
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 
 import asyncio

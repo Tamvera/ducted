@@ -3,7 +3,7 @@
    :platform: unix
    :synopsis: Provides checks for running system processes
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 import re
 

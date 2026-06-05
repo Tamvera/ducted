@@ -2,7 +2,7 @@
 .. module:: interfaces
    :synopsis: Generic interfaces
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 
 from zope.interface import Interface

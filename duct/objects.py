@@ -2,7 +2,7 @@
 .. module:: objects
    :synopsis: Base classes for sources, outputs, and event objects
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 
 import hashlib

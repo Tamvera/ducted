@@ -3,7 +3,7 @@
    :platform: Any
    :synopsis: Sources for interfacing with environmental sensors
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 from zope.interface import implementer
 

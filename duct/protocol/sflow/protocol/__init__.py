@@ -2,7 +2,7 @@
 .. module:: protocol
    :synopsis: SFlow protocol
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 
 from duct.protocol.sflow.protocol import protocol

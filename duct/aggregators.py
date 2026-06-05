@@ -2,7 +2,7 @@
 .. module:: aggregators
    :synopsis: Aggregation functions
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 
 

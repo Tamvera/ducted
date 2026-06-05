@@ -3,7 +3,7 @@
    :platform: Unix
    :synopsis: A source module for postfix stats
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 
 import logging

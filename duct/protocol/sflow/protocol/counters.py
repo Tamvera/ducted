@@ -2,7 +2,7 @@
 .. module:: counters
    :synopsis: SFlow counter object interfaces
 
-.. moduleauthor:: Colin Alston <colin@imcol.in>
+.. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
 from construct import Array, Bytes, Int32ub, Struct, this
 
