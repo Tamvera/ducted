@@ -58,7 +58,7 @@ class DuctService(object):
 
     async def setupOutputs(self, config):
         """Set up output processors"""
-        
+
         if self.server:
             if self.proto == 'tcp':
                 defaultOutput = {
@@ -77,7 +77,7 @@ class DuctService(object):
             outputs = config.get('outputs', [])
 
         for output in outputs:
-            log.info(f"Setting up {output['output']}")
+            log.info(f"Setting up %s", output['output'])
             if 'debug' not in output:
                 output['debug'] = self.debug
 
@@ -133,7 +133,7 @@ class DuctService(object):
         sources = config.get('sources', [])
 
         for source in sources:
-            log.info(f"Setting up {source['source']}::{source['service']}")
+            log.info(f"Setting up %s::%s", source['source'], source['service'])
             src = self.createSource(source)
             self.setupTriggers(source, src)
             self.sources.append(src)
