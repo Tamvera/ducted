@@ -15,13 +15,6 @@ duct.protocol.icmp
    :members:
    :show-inheritance:
 
-duct.protocol.imap4
-===================
-
-.. automodule:: duct.protocol.imap4
-   :members:
-   :show-inheritance:
-
 duct.protocol.opentdsb
 ======================
 

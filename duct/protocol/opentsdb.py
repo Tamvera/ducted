@@ -11,7 +11,7 @@ from duct import utils
 
 
 class OpenTSDBClient(object):
-    """Twisted ElasticSearch API
+    """OpenTSDB HTTP client
     """
     def __init__(self, url='http://localhost:4242', user=None, password=None):
         self.url = url.rstrip('/')

@@ -104,6 +104,13 @@ duct.sources.munin
    :members:
    :show-inheritance:
 
+duct.sources.nats
+====================
+
+.. automodule:: duct.sources.nats
+   :members:
+   :show-inheritance:
+
 duct.sources.network
 ======================
 

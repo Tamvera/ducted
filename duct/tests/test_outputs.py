@@ -2,11 +2,13 @@ import json
 import pytest
 import pytest_asyncio
 
-from duct.outputs import elasticsearch, opentsdb
+from duct.outputs import elasticsearch, opentsdb, nats
 from duct.objects import Event
 from duct.service import DuctService
 
-from .helpers import TestConfig
+from duct.protocol.senml import senml_to_event
+
+from .helpers import TestConfig, FakeNATS
 
 
 @pytest.fixture
@@ -59,3 +61,26 @@ class TestOutputs:
         request_data = json.loads(last_request['args'][1])[0]
 
         assert request_data['metric'] == 'sky'
+
+
+class TestNATSOutput:
+    @pytest.mark.asyncio
+    async def test_nats_output_senml(self, service, event):
+        nats.NATS = FakeNATS
+        nats.nats = FakeNATS()
+
+        out = nats.Nats({}, service)
+
+        await out.createClient()
+
+        out.eventsReceived([event])
+
+        await out._tick()
+
+        topic, ev = out.nc.messages[0]
+        
+        assert topic.endswith(".sky")
+
+        event = senml_to_event(ev)
+
+        assert event.service.endswith(".sky")

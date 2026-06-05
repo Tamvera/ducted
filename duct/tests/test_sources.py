@@ -8,12 +8,13 @@ import pytest
 import pytest_asyncio
 
 from duct.sources.linux import basic, process, sensors
-from duct.sources import riak, nginx, network, apache, munin, haproxy
+from duct.sources import riak, nginx, network, apache, munin, haproxy, nats
 from duct.sources.database import elasticsearch, postgresql, memcache
 from duct.service import DuctService
 from duct.tests import globs
+from duct.protocol.senml import senml_to_event
 
-from .helpers import TestConfig
+from .helpers import TestConfig, FakeNATS
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -567,3 +568,27 @@ class TestRiakSources:
         assert gets.metric == 2.5
         assert puts.service == "riak.puts_per_second"
         assert puts.metric == 0.75
+
+# ---------------------------------------------------------------------------
+# NATS sources
+# ---------------------------------------------------------------------------
+
+class TestNATSSource:
+    @pytest.mark.asyncio
+    async def test_nats_source_senml(self, duct_service):
+        nats.NATS = FakeNATS
+        nats.nats = FakeNATS()
+
+        event_queue = []
+        def _nats_qb(source, event):
+            event_queue.extend(event)
+
+        source = nats.Nats({"service": "test", "topics": ["test"]}, _nats_qb, duct_service)
+
+        await source.startTimer()
+
+        await source.nc.publish('test.load', b'{"n": "test.load", "t": 1780677400.1510267, "v": 0.17}')
+
+        assert len(event_queue) > 0
+
+        assert event_queue[0].service == "test.load"

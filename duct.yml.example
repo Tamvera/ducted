@@ -7,12 +7,12 @@ outputs:
       port: 5555
 
 # Default TTL for events (default: 60 seconds)
-# It should be noted if Duct loses its connection to Riemann it will purge
+# It should be noted if Duct loses its connection to an output it will purge
 # queued events if their age exceeds the TTL.
 # Sources can also have a custom TTL
 ttl: 60.0
 
-# Dequeue events and send to Riemann at this rate in seconds. This basically
+# Dequeue events and send to the output at this rate in seconds. This basically
 # decides how "realtimey" the events are. If this is longer than your source
 # intervals, you'll get 'bursty' events, but they will retain the right
 # timestamps.
