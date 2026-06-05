@@ -8,6 +8,7 @@ from duct.objects import Event, Source, Output
 from duct.service import DuctService
 from duct.aggregators import Counter32, Counter64, Counter
 
+from .helpers import TestConfig
 
 # ---------------------------------------------------------------------------
 # Fake Riemann server using asyncio streams
@@ -111,7 +112,8 @@ async def riemann_server():
 @pytest.mark.asyncio
 async def test_service_sends_event(riemann_server):
     srv, port = riemann_server
-    service = DuctService({"server": "localhost", "port": port})
+    service = DuctService(TestConfig({"server": "localhost", "port": port}))
+    print("Starting service")
     await service.startService()
     try:
         [] = await srv.wait_for_messages(0)
@@ -148,7 +150,7 @@ def _aggregator_test(service, m1, m2, aggregator, delta):
 
 class TestAggregators:
     def setup_method(self):
-        self.service = DuctService({})
+        self.service = DuctService(TestConfig({}))
 
     def test_aggregate_counter32(self):
         assert _aggregator_test(self.service, 1, 2, Counter32, 4) == 0.25
@@ -167,7 +169,7 @@ class TestAggregators:
             self.service, 18446744073709551610, 5, Counter64, 4) == 2.5
 
     def test_state_match(self):
-        service = DuctService({
+        service = DuctService(TestConfig({
             'interval': 1.0, 'ttl': 60.0,
             'sources': [{
                 'source': 'duct.sources.linux.basic.Network',
@@ -175,7 +177,7 @@ class TestAggregators:
                 'critical': {'network.\\w+.tx_bytes': '> 500'},
                 'warning': {'network.\\w+.tx_bytes': '> 100'},
                 'service': 'network'}]
-        })
+        }))
 
         ev1 = Event('ok', 'network.foo.tx_bytes', 'net1', 50, 1,
                     hostname='localhost')
@@ -192,14 +194,14 @@ class TestAggregators:
 
     @pytest.mark.asyncio
     async def test_source_routing(self):
-        service = DuctService({
+        service = DuctService(TestConfig({
             'interval': 1.0, 'ttl': 60.0,
             'sources': [{
                 'source': 'duct.sources.linux.basic.LoadAverage',
                 'interval': 2.0,
                 'route': 'out1',
                 'service': 'load'}]
-        })
+        }))
 
         output1 = FakeOutput({}, service)
         output2 = FakeOutput({}, service)

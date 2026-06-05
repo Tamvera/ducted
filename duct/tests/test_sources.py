@@ -13,6 +13,7 @@ from duct.sources.database import elasticsearch, postgresql, memcache
 from duct.service import DuctService
 from duct.tests import globs
 
+from .helpers import TestConfig
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -20,7 +21,7 @@ from duct.tests import globs
 
 @pytest.fixture
 def duct_service():
-    return DuctService({})
+    return DuctService(TestConfig({}))
 
 
 def _qb(source, events):

@@ -19,6 +19,8 @@ dependencies = [
     "pysnmp>=6.0",
     "cryptography",
     "service_identity",
+    "pydantic>=2.0",
+    "construct>=2.10"
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -36,7 +38,6 @@ Homepage = "http://github.com/Tamvera/ducted"
 [project.optional-dependencies]
 dev = [
     "asyncpg",
-    "construct<2.6",
     "pytest",
     "pytest-asyncio",
     "pytest-cov",

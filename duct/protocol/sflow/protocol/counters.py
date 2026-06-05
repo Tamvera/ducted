@@ -4,7 +4,7 @@
 
 .. moduleauthor:: Colin Alston <colin@imcol.in>
 """
-from construct import Struct, UBInt32, Array, Bytes
+from construct import Array, Bytes, Int32ub, Struct, this
 
 
 class InterfaceCounters(object):
@@ -126,13 +126,15 @@ class HostAdapters(object):
     """
     format = 2001
     def __init__(self, u):
-        self.adapters = Struct("adapters",
-                               UBInt32("count"),
-                               Array(lambda c: c.count,
-                                     Struct("adapter",
-                                            UBInt32("index"),
-                                            Bytes("MAC", 6)))
-                              ).parse(u.get_buffer())
+        self.adapters = Struct(
+            "count" / Int32ub,
+            "adapter" / Array(this.count,
+                Struct(
+                    "index" / Int32ub,
+                    "MAC" / Bytes(6),
+                )
+            ),
+        ).parse(u.get_buffer())
 
 class HostParent(object):
     """Counters for hosts

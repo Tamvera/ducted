@@ -41,15 +41,15 @@ class DuctService(object):
         if os.path.exists('/var/lib/duct'):
             sys.path.append('/var/lib/duct')
 
-        self.debug = float(self.config.get('debug', False))
-        self.ttl = float(self.config.get('ttl', 60.0))
-        self.stagger = float(self.config.get('stagger', 0.2))
+        self.debug = self.config['debug']
+        self.ttl = self.config['ttl']
+        self.stagger = self.config['stagger']
 
         # Backward compatibility
-        self.server = self.config.get('server', None)
-        self.port = int(self.config.get('port', 5555))
-        self.proto = self.config.get('proto', 'tcp')
-        self.inter = self.config.get('interval', 60.0)
+        self.server = self.config['server']
+        self.port = self.config['port']
+        self.proto = self.config['proto']
+        self.inter = self.config['interval']
 
         if self.debug:
             print("config:", repr(config))
@@ -71,7 +71,7 @@ class DuctService(object):
                     'server': self.server,
                     'port': self.port
                 }
-            outputs = config.get('outputs', [defaultOutput])
+            outputs = config.get('outputs') or [defaultOutput]
         else:
             outputs = config.get('outputs', [])
 

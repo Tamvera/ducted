@@ -6,10 +6,12 @@ from duct.outputs import elasticsearch, opentsdb
 from duct.objects import Event
 from duct.service import DuctService
 
+from .helpers import TestConfig
+
 
 @pytest.fixture
 def service():
-    return DuctService({})
+    return DuctService(TestConfig({}))
 
 
 @pytest.fixture

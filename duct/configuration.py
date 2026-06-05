@@ -9,14 +9,50 @@ import os
 import itertools
 import copy
 import logging
+from typing import Optional
 
 import yaml
+from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import field_validator
 
 log = logging.getLogger(__name__)
+
 
 class ConfigurationError(Exception):
     """General exception class for Duct configuration issues
     """
+
+
+class DuctConfig(BaseModel):
+    """Top-level configuration schema with centralised defaults."""
+    model_config = ConfigDict(extra='allow')
+
+    # Timing
+    interval: float = 60.0
+    ttl: float = 60.0
+    stagger: float = 0.2
+
+    # Debugging
+    debug: int = 0
+
+    # Legacy Riemann output shorthand
+    server: Optional[str] = None
+    port: int = 5555
+    proto: str = 'tcp'
+
+    # Sources and outputs
+    sources: list = []
+    outputs: Optional[list] = []
+
+    # Global SSH defaults (can be overridden per-source)
+    ssh_knownhosts_file: Optional[str] = None
+    ssh_keyfile: Optional[str] = None
+    ssh_key: Optional[str] = None
+    ssh_keypass: Optional[str] = None
+    ssh_username: Optional[str] = None
+    ssh_password: Optional[str] = None
+    ssh_port: int = 22
+
 
 class ConfigFile(object):
     """Duct configuration file parser and accessor
@@ -32,45 +68,18 @@ class ConfigFile(object):
         else:
             raise ConfigurationError(f"Configuration file '{path}' not found")
 
-        self.known_items = {
-            'sources': list,
-            'outputs': list,
-            'interval': (float, int,),
-            'ttl': (float, int,),
-            'blueprint': list,
-            'ssh_key': str,
-            'ssh_user': str,
-            'toolbox': dict
-        }
-
         self._parse_config()
-
-    def _validate_type(self, item, vtype):
-        if not isinstance(vtype, tuple):
-            vtype = (vtype, )
-
-        parse = False
-        for vt in vtype:
-            try:
-                assert isinstance(self.raw_config.get(item, vt()), vtype)
-                parse = True
-            except AssertionError:
-                pass
-
-        if not parse:
-            raise ConfigurationError(
-                f"{item} must be one of type {repr(vtype)}")
-
-    def _validate_config(self):
-        for key, val in self.known_items.items():
-            self._validate_type(key, val)
 
     def _parse_config(self):
         self._merge_includes()
-
-        self._validate_config()
-
         self._build_blueprints()
+
+        try:
+            validated = DuctConfig(**self.raw_config)
+        except ValidationError as e:
+            raise ConfigurationError(str(e)) from e
+
+        self.raw_config = validated.model_dump()
 
     def _merge_includes(self):
         def both(i1, i2, t):
@@ -86,7 +95,6 @@ class ConfigFile(object):
 
         paths.extend(paths2)
 
-
         for ipath in paths:
             if os.path.exists(ipath):
                 files = [os.path.join(ipath, fi) for fi in os.listdir(ipath)
@@ -98,15 +106,12 @@ class ConfigFile(object):
                         for key, val in conf.items():
                             if key in self.raw_config:
                                 if both(val, self.raw_config[key], dict):
-                                    # Merge dicts
                                     for k2, v2 in val.items():
                                         self.raw_config[key][k2] = v2
 
                                 elif both(val, self.raw_config[key], list):
-                                    # Extend lists
                                     self.raw_config[key].extend(val)
                                 else:
-                                    # Overwrite
                                     self.raw_config[key] = val
                             else:
                                 self.raw_config[key] = val
@@ -117,24 +122,20 @@ class ConfigFile(object):
                             ipath)
 
     def _build_blueprints(self):
-        # Turn toolboxes into a dict
         toolboxes = self.raw_config.get('toolbox', {})
         blueprints = self.raw_config.get('blueprint', [])
 
         if blueprints:
-            # Make sure raw config stubs exist if we have any blueprints
             if 'sources' not in self.raw_config:
                 self.raw_config['sources'] = []
 
         for blueprint in blueprints:
             tbs = blueprint['toolbox']
-            # Listify it so we can inherit multiple toolboxes
             if not isinstance(toolboxes, list):
                 tbs = [tbs]
 
             tbs = [toolboxes[tool] for tool in tbs]
 
-            # Compute a dot product of all the config settings vectors
             inversions = []
             for key, val in blueprint.get('sets', {}).items():
                 inversions.append([(key, jay) for jay in val])
@@ -142,25 +143,19 @@ class ConfigFile(object):
             for options in itertools.product(*inversions):
                 for toolbox in tbs:
                     for source in toolbox.get('sources', []):
-                        # Make a copy of the source dict
                         mysource = copy.copy(source)
 
-                        # Merge toolbox defaults
                         for key, val in toolbox.get('defaults', {}).items():
                             mysource[key] = val
 
-                        # Merge blueprint defaults
                         for key, val in blueprint.get('defaults', {}).items():
                             mysource[key] = val
 
-                        # Merge set permutation
                         for key, val in options:
                             mysource[key] = val
 
-                        # Bolt it into our real config file
                         self.raw_config['sources'].append(mysource)
 
-        # Free a tiny bit of memory
         if 'toolbox' in self.raw_config:
             del self.raw_config['toolbox']
 
