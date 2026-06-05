@@ -42,7 +42,10 @@ def main():
 
 
 async def _run(config_path):
+    log = logging.getLogger(__name__)
+    log.info("Starting Ductd service.")
     config = ConfigFile(config_path)
+
     svc = DuctService(config)
 
     loop = asyncio.get_running_loop()
@@ -56,6 +59,7 @@ async def _run(config_path):
         loop.add_signal_handler(sig, _handle_signal)
 
     await svc.startService()
+    log.info("Service running.")
 
     await stop_event.wait()
 
