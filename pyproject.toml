@@ -22,7 +22,8 @@ dependencies = [
     "pydantic~=2.13",
     "construct~=2.10",
     "nats-py~=2.15",
-    "cbor2~=6.1"
+    "cbor2~=6.1",
+    "smbus2~=0.6"
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
