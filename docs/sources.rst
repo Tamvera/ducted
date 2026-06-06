@@ -45,7 +45,7 @@ A "Hello world" source::
 
     @implementer(IDuctSource)
     class HelloWorld(Source):
-        
+
         def get(self):
             return self.createEvent('ok', 'Hello world!', 0)
 

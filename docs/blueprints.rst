@@ -7,9 +7,9 @@ when monitoring a large list of hosts from a central point.
 
 It's important to point out however that Duct is not well optimised for that
 use case since each check permutation requires a resident timer object and
-staggered startup can take a long time. To tune the stagger interval set 
+staggered startup can take a long time. To tune the stagger interval set
 the `stagger` global config variable to something very small, specifically
-`acceptable_start_time/number_of_checks` in seconds. 
+`acceptable_start_time/number_of_checks` in seconds.
 
 eg. If you have 1000 checks and the acceptable startup time is 5 add `stagger: 0.005`
 to the configuration file.
