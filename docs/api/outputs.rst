@@ -15,6 +15,13 @@ duct.outputs.elasticsearch
    :members:
    :show-inheritance:
 
+duct.outputs.graphite
+============================
+
+.. automodule:: duct.outputs.graphite
+   :members:
+   :show-inheritance:
+
 duct.outputs.logger
 ============================
 
