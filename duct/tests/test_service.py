@@ -93,7 +93,7 @@ class FakeOutput(Output):
         Output.__init__(self, *a)
         self.events = None
 
-    def eventsReceived(self, events):
+    async def eventsReceived(self, events):
         self.events = events
 
 

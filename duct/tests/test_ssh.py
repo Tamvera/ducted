@@ -59,13 +59,13 @@ class TestSSH:
             'use_ssh': True,
         }, self._qb, FakeDuct())
 
-    def test_ssh_add_keyfile(self):
-        with open('temp_key', 'wt') as f:
+    def test_ssh_add_keyfile(self, tmp_path):
+        with open(tmp_path/'temp_key', 'wt') as f:
             f.write(testKey)
 
         basic.LoadAverage({
             'service': 'mem',
             'use_ssh': True,
-            'ssh_keyfile': 'temp_key',
+            'ssh_keyfile': str(tmp_path/'temp_key'),
             'ssh_key': None,
         }, self._qb, FakeDuct())

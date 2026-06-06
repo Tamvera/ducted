@@ -57,7 +57,7 @@ An example logging output::
     log = logging.getLogger(__name__)
 
     class Logger(Output):
-        def eventsReceived(self, events):
+        async def eventsReceived(self, events):
             log.info("Events dequeued: %s", len(events))
 
 If you save this as `test.py` the basic configuration you need is simply ::

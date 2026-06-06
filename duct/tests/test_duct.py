@@ -13,16 +13,16 @@ from duct.tests import globs
 
 
 class TestConfig:
-    def test_config_parser(self):
-        if not os.path.exists('testdir'):
-            os.mkdir('testdir')
-        with open('testdir/test.yaml', 'wt') as f:
+    def test_config_parser(self, tmp_path):
+        if not os.path.exists(tmp_path/'testdir'):
+            os.mkdir(tmp_path/'testdir')
+        with open(tmp_path/'testdir/test.yaml', 'wt') as f:
             f.write(globs.CONFIG_INCLUDE)
 
-        with open('testconf.yaml', 'wt') as f:
-            f.write(globs.CONFIG_TEST)
+        with open(tmp_path/'testconf.yaml', 'wt') as f:
+            f.write(globs.CONFIG_TEST.replace('testdir', str(tmp_path/'testdir')))
 
-        c = ConfigFile('testconf.yaml')
+        c = ConfigFile(str(tmp_path/'testconf.yaml'))
 
         merged = c.get('mergehash')
         assert merged['test3']['foo'] == 'bar'
