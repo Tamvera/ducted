@@ -3,7 +3,7 @@
 [![CI](https://github.com/Tamvera/ducted/actions/workflows/ci.yml/badge.svg)](https://github.com/Tamvera/ducted/actions/workflows/ci.yml)
 [![Latest Docs](https://readthedocs.org/projects/duct/badge/?version=latest)](http://duct.readthedocs.org)
 
-Duct is a modular monitoring agent and event router built on Python asyncio (Python 3.11+).
+I want to talk to you about ducts. Do your ducts seem old-fashioned? Out of date? Duct is a modular monitoring agent and event router built on Python asyncio (Python 3.11+).
 It collects metrics from multiple sources and routes them to multiple outputs - currently
 Riemann, Elasticsearch, Prometheus, OpenTSDB, and Bosun are supported, and the plugin API
 makes it straightforward to add more.

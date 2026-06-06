@@ -34,17 +34,14 @@ class DuctConfig(BaseModel):
     # Debugging
     debug: int = 0
 
-    # Legacy Riemann output shorthand
-    server: Optional[str] = None
-    port: int = 5555
-    proto: str = 'tcp'
+    default_route: Optional[str] = None
 
     # Sources and outputs
     sources: list = []
     outputs: Optional[list] = []
 
     # Global SSH defaults (can be overridden per-source)
-    ssh_knownhosts_file: Optional[str] = None
+    ssh_knownhosts_file: Optional[str] = '/var/lib/duct/known_hosts'
     ssh_keyfile: Optional[str] = None
     ssh_key: Optional[str] = None
     ssh_keypass: Optional[str] = None
@@ -52,6 +49,8 @@ class DuctConfig(BaseModel):
     ssh_password: Optional[str] = None
     ssh_port: int = 22
 
+    # Daemon config
+    base_path: str = "/var/lib/duct"
 
 class ConfigFile(object):
     """Duct configuration file parser and accessor
@@ -74,11 +73,11 @@ class ConfigFile(object):
         self._build_blueprints()
 
         try:
-            validated = DuctConfig(**self.raw_config)
+            self.duct_config = DuctConfig(**self.raw_config)
         except ValidationError as e:
             raise ConfigurationError(str(e)) from e
 
-        self.raw_config = validated.model_dump()
+        self.raw_config = self.duct_config.model_dump()
 
     def _merge_includes(self):
         def both(i1, i2, t):
@@ -169,3 +168,6 @@ class ConfigFile(object):
 
     def __getitem__(self, item):
         return self.raw_config[item]
+
+    def __getattr__(self, name):
+        return self.duct_config.__getattribute__(name)

@@ -1,7 +1,7 @@
 """
-.. module:: environment
+.. module:: mpl115
    :platform: Any
-   :synopsis: Sources for interfacing with environmental sensors
+   :synopsis: MPL115 i2c sensor
 
 .. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
@@ -10,7 +10,7 @@ from zope.interface import implementer
 from duct.interfaces import IDuctSource
 from duct.objects import Source
 from duct.utils import wait
-
+from duct.protocol import i2c
 
 # MPL115A2 Register Address
 PADC_MSB = 0x00
@@ -38,7 +38,7 @@ class MPL115(Source):
     **Configuration arguments:**
 
     :param address: I2C address of the sensor (default 0x60)
-    :type dx: hex.
+    :type address: hex.
     :param smbus: Bus number (default 1)
     :type smbus: int.
     :param altitude: Altitude for correction (default 0)
@@ -48,14 +48,8 @@ class MPL115(Source):
     def __init__(self, *a, **kw):
         Source.__init__(self, *a, **kw)
 
-        try:
-            import smbus  # pylint: disable=import-outside-toplevel
-        except ImportError as exc:
-            raise ImportError(
-                "MPL115 source requires python-smbus (smbus-cffi)") from exc
-
         self.address = self.config.get('address', 0x60)
-        self.bus = smbus.SMBus(self.config.get('smbus', 1))
+        self.bus = self.config.get('smbus', 1)
         self.altitude = self.config.get('altitude', 0.0)
 
         self.readCoefficients()
@@ -69,7 +63,7 @@ class MPL115(Source):
                              prefix='temp')
         ]
 
-    def readCoefficients(self):
+    async def readCoefficients(self):
         """Read coefficients from sensor"""
         def _convert(data1, data2):
             value = data1 | (data2 << 8)
@@ -77,36 +71,38 @@ class MPL115(Source):
                 value -= (1 << 16)
             return value
 
-        data = self.bus.read_i2c_block_data(self.address, A0_MSB, 8)
+        async with i2c.transaction(self.bus, self.address) as iic:
+            data = await iic.read_block(A0_MSB, 8)
 
-        self.a0 = _convert(data[1], data[0])
-        self.b1 = _convert(data[3], data[2])
-        self.b2 = _convert(data[5], data[4])
-        self.c12 = _convert(data[7], data[6])
+            self.a0 = _convert(data[1], data[0])
+            self.b1 = _convert(data[3], data[2])
+            self.b2 = _convert(data[5], data[4])
+            self.c12 = _convert(data[7], data[6])
 
-        self.a0 = float(self.a0) / (1 << 3)
-        self.b1 = float(self.b1) / (1 << 13)
-        self.b2 = float(self.b2) / (1 << 14)
-        self.c12 = float(self.c12) / (1 << 24)
+            self.a0 = float(self.a0) / (1 << 3)
+            self.b1 = float(self.b1) / (1 << 13)
+            self.b2 = float(self.b2) / (1 << 14)
+            self.c12 = float(self.c12) / (1 << 24)
 
     async def readData(self):
         """Read data from the sensor
            returns dict containing 'hpa' and 'temp' values
         """
-        self.bus.write_byte_data(self.address, CONVERT, 0x01)
+        async with i2c.transaction(self.bus, self.address) as iic:
+            await iic.write_byte_data(CONVERT, 0x01)
 
-        await wait(3)
+            await wait(3)
 
-        data = self.bus.read_i2c_block_data(self.address, PADC_MSB, 4)
+            data = await iic.read_block(PADC_MSB, 4)
 
-        padc = ((data[0] << 8) | data[1]) >> 6
-        tadc = ((data[2] << 8) | data[3]) >> 6
+            padc = ((data[0] << 8) | data[1]) >> 6
+            tadc = ((data[2] << 8) | data[3]) >> 6
 
-        pcomp = self.a0 + (self.b1 + self.c12 * tadc) * padc + self.b2 * tadc
+            pcomp = self.a0 + (self.b1 + self.c12 * tadc) * padc + self.b2 * tadc
 
-        hpa = pcomp * ((1150.0 - 500.0) / 1023.0) + 500.0
-        hpa /= pow(1.0 - (self.altitude / 44330.0), 5.255)
+            hpa = pcomp * ((1150.0 - 500.0) / 1023.0) + 500.0
+            hpa /= pow(1.0 - (self.altitude / 44330.0), 5.255)
 
-        temp = 25.0 - (tadc - 512.0) / 5.35
+            temp = 25.0 - (tadc - 512.0) / 5.35
 
-        return {'hpa': hpa, 'temp': temp}
+            return {'hpa': hpa, 'temp': temp}

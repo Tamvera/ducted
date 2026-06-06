@@ -112,8 +112,12 @@ async def riemann_server():
 @pytest.mark.asyncio
 async def test_service_sends_event(riemann_server):
     srv, port = riemann_server
-    service = DuctService(TestConfig({"server": "localhost", "port": port}))
-    print("Starting service")
+    service = DuctService(TestConfig({
+        "outputs":[
+            {"output":"duct.outputs.riemann.RiemannTCP", "server": "localhost", "port": port}
+        ]
+    }))
+
     await service.startService()
     try:
         [] = await srv.wait_for_messages(0)
@@ -168,6 +172,7 @@ class TestAggregators:
         assert _aggregator_test(
             self.service, 18446744073709551610, 5, Counter64, 4) == 2.5
 
+class TestService:
     def test_state_match(self):
         service = DuctService(TestConfig({
             'interval': 1.0, 'ttl': 60.0,
@@ -195,7 +200,11 @@ class TestAggregators:
     @pytest.mark.asyncio
     async def test_source_routing(self):
         service = DuctService(TestConfig({
-            'interval': 1.0, 'ttl': 60.0,
+            'interval': 0.1, 'ttl': 60.0,
+            'outputs': [
+                {'output': 'duct.tests.test_service.FakeOutput', 'name': 'out1'},
+                {'output': 'duct.tests.test_service.FakeOutput', 'name': 'out2'}
+            ],
             'sources': [{
                 'source': 'duct.sources.linux.basic.LoadAverage',
                 'interval': 2.0,
@@ -231,3 +240,30 @@ class TestAggregators:
 
         assert len(output1.events) == 1
         assert len(output2.events) == 1
+
+    @pytest.mark.asyncio
+    async def test_no_route(self):
+        service = DuctService(TestConfig({
+            'interval': 0.1, 'ttl': 60.0,
+            'outputs': [{
+                'output': 'duct.outputs.logger.Logger',
+                'name': 'out1'}],
+            'sources': [{
+                'source': 'duct.sources.linux.basic.LoadAverage',
+                'interval': 2.0,
+                'service': 'load'}]
+        }))
+
+        output1 = FakeOutput({}, service)
+
+        [source] = service.sources
+
+        service.outputs['out1'] = [output1]
+
+        event = Event('ok', 'load', 'load', 1, 1, hostname='localhost')
+
+        service.sendEvent(source, event)
+
+        await asyncio.sleep(0.2)
+
+        assert len(output1.events) == 1

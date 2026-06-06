@@ -14,6 +14,11 @@ class LogFollower(object):
     :type logfile: str
     :param parser: Optional parser method for log lines
     :type parser: str
+    :param tmp_path: Temporary path used to store position markers
+    :type tmp_path: str
+    :param history: If True the log is read from the start instead of tailed
+                    unless its already been read
+    :type history: str
     """
 
     def __init__(self, logfile, parser=None, tmp_path="/var/lib/duct/",

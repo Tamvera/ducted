@@ -188,14 +188,14 @@ Remote SSH checks
 =================
 
 A new feature in Duct is the ability to perform checks on a remote device
-using SSH. This is currently only supported by certain sources. 
+using SSH. This is currently only supported by certain sources.
 
 To perform a check over SSH we need an `ssh_host` which defaults to the check
 hostname, `ssh_username`, and one of `ssh_key`, `ssh_keyfile` or `ssh_password`.
 All of these except the ssh_host parameter can be specified globally and/or
 on a specific source to override the global configuration.
 
-`ssh_key` allows providing a private key in a YAML text blob. If `ssh_key` or 
+`ssh_key` allows providing a private key in a YAML text blob. If `ssh_key` or
 `ssh_keyfile` is password encrypted then `ssh_keypass` can be set to that in
 plain text - although this isn't really recommendable.
 

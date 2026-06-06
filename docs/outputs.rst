@@ -10,8 +10,8 @@ which defines them, and as such can read any attributes from that either
 optional or mandatory.
 
 Since outputs are constructed at startup time they can retain any required
-state. A copy of the queue is passed to all 
-:method:`duct.objects.Output.eventsReceived` calls which happen at each 
+state. A copy of the queue is passed to all
+:method:`duct.objects.Output.eventsReceived` calls which happen at each
 queue `interval` config setting as the queue is emptied. This list of
 :class:`duct.objects.Event` objects must not be altered by the output.
 

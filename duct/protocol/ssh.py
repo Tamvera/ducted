@@ -31,10 +31,10 @@ class SSHClient(object):
         self.password = password
         self.connection = None
 
-        if not knownhosts:
-            knownhosts = '/var/lib/duct/known_hosts'
-
-        self.knownhosts = knownhosts if os.path.exists(knownhosts) else None
+        self.knownhosts = None
+        if knownhosts:
+            if os.path.exists(knownhosts):
+                self.knownhosts = knownhosts
 
         self._client_keys = []
 

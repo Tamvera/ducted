@@ -38,43 +38,69 @@ class DuctService(object):
 
         self.config = config
 
-        if os.path.exists('/var/lib/duct'):
-            sys.path.append('/var/lib/duct')
+        if os.path.exists(self.config.base_path):
+            sys.path.append(self.config.base_path)
 
-        self.debug = self.config['debug']
-        self.ttl = self.config['ttl']
-        self.stagger = self.config['stagger']
+        self.debug = self.config.debug
+        self.ttl = self.config.ttl
+        self.stagger = self.config.stagger
 
-        # Backward compatibility
-        self.server = self.config['server']
-        self.port = self.config['port']
-        self.proto = self.config['proto']
-        self.inter = self.config['interval']
+        self.inter = self.config.interval
 
-        if self.debug:
-            print("config:", repr(config))
+        log.debug("config: %s", repr(config))
 
-        self.setupSources(self.config)
+        self.configureRouting()
+
+        self.setupSources()
+
+    def configureRouting(self):
+        """Check and validate routing setup"""
+        # Validate routing
+
+        output_names = []
+        outputs = self.config.get('outputs', [])
+
+        for output in outputs:
+            name = output.get('name', None)
+            if name not in output_names:
+                output_names.append(name)
+
+        sources = self.config.get('sources', [])
+
+        for source in sources:
+            routes = source.get('route', None)
+            if not routes:
+                # Try default
+                if self.config.default_route:
+                    routes = [self.config.default_route]
+                elif len(output_names) == 1:
+                    # If there's only one output, assume thats the one
+                    routes = [output_names[0]]
+
+            if not isinstance(routes, list):
+                routes = [routes]
+
+            final_routes = []
+            for route in routes:
+                if route == '*':
+                    for output in output_names:
+                        if output not in final_routes:
+                            final_routes.append(output)
+                elif route not in output_names:
+                    log.warning('Could not route %s -> %s.', source['service'], route)
+                else:
+                    if route not in final_routes:
+                        final_routes.append(route)
+
+            source['route'] = final_routes
 
     async def setupOutputs(self, config):
         """Set up output processors"""
 
-        if self.server:
-            if self.proto == 'tcp':
-                defaultOutput = {
-                    'output': 'duct.outputs.riemann.RiemannTCP',
-                    'server': self.server,
-                    'port': self.port
-                }
-            else:
-                defaultOutput = {
-                    'output': 'duct.outputs.riemann.RiemannUDP',
-                    'server': self.server,
-                    'port': self.port
-                }
-            outputs = config.get('outputs') or [defaultOutput]
-        else:
-            outputs = config.get('outputs', [])
+        outputs = config.get('outputs', [])
+
+        if len(outputs) < 1:
+            log.warning("No outputs configured!")
 
         for output in outputs:
             log.info("Setting up %s", output['output'])
@@ -97,6 +123,7 @@ class DuctService(object):
 
     def createSource(self, source):
         """Construct the source object as defined in the configuration"""
+        log.info("Creating source %s", source)
         if source.get('path'):
             path = source['path']
             if path not in sys.path:
@@ -128,9 +155,9 @@ class DuctService(object):
             self.warn[sobj] = [(re.compile(key), val)
                                for key, val in source['warning'].items()]
 
-    def setupSources(self, config):
+    def setupSources(self):
         """Set up source objects from the given config"""
-        sources = config.get('sources', [])
+        sources = self.config.get('sources', [])
 
         for source in sources:
             log.info("Setting up %s::%s", source['source'], source['service'])
@@ -180,22 +207,15 @@ class DuctService(object):
 
     def routeEvent(self, source, events):
         """Route events to the configured output(s) for this source"""
-        routes = source.config.get('route', None)
-
-        if not isinstance(routes, list):
-            routes = [routes]
+        routes = source.config.get('route', [None])
 
         for route in routes:
             if self.debug:
                 log.debug("Sending events %s to %s", events, route)
 
-            if route not in self.outputs:
-                log.warning('Could not route %s -> %s.',
-                            source.config['service'], route)
-            else:
-                for output in self.outputs[route]:
-                    asyncio.get_event_loop().call_soon(
-                        output.eventsReceived, events)
+            for output in self.outputs[route]:
+                asyncio.get_event_loop().call_soon(
+                    output.eventsReceived, events)
 
     def sendEvent(self, source, events):
         """Callback that all event sources call when they have new events"""
