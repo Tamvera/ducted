@@ -74,7 +74,7 @@ class DuctService(object):
                 if self.config.default_route:
                     routes = [self.config.default_route]
                 elif len(output_names) == 1:
-                    # If there's only one output, assume thats the one    
+                    # If there's only one output, assume thats the one
                     routes = [output_names[0]]
 
             if not isinstance(routes, list):
@@ -91,7 +91,7 @@ class DuctService(object):
                 else:
                     if route not in final_routes:
                         final_routes.append(route)
-        
+
             source['route'] = final_routes
 
     async def setupOutputs(self, config):

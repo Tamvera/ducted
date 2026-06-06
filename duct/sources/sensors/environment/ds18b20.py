@@ -5,6 +5,8 @@
 
 .. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
+# pylint: disable=W1514
+import asyncio
 import os
 import logging
 
@@ -12,7 +14,6 @@ from zope.interface import implementer
 
 from duct.interfaces import IDuctSource
 from duct.objects import Source
-from duct.utils import wait
 
 
 log = logging.getLogger(__name__)
@@ -22,7 +23,8 @@ log = logging.getLogger(__name__)
 class DS18B20(Source):
     """DS18B20 1-wire temperature sensor.
     This module reads sensors connected with the `wire` kernel module typically
-    used on a Raspberry Pi with the w1-gpio device tree overlay.
+    used on a Raspberry Pi with the w1-gpio device tree overlay. These can be slow to read
+    if you have a lot of them, so make sure you have a sufficient interval set.
 
     **Configuration arguments:**
 
@@ -54,18 +56,17 @@ class DS18B20(Source):
             temp_str = lines[1].split('t=')[-1]
             return float(temp_str) / 1000.0
         except Exception as e:
-            log.warning(f"Error reading sensor {sensor_id}: {e}")
+            log.warning("Error reading sensor %s: %s", sensor_id, str(e))
             return None
 
-    async def get(self):
-        """Polls all sensors and sends metrics in a batch every POLL_INTERVAL seconds."""
-
+    def read_sensors(self):
+        """Read all sensors on the device path"""
         sensors = [d for d in os.listdir(self.device_path) if d.startswith('28-')]
         metrics = []
 
         for sensor_id in sensors:
             if self.ignore_unmapped and (sensor_id not in self.device_map):
-                log.debug(f"Ignoring unmapped sensor {sensor_id}.")
+                log.debug("Ignoring unmapped sensor %s", sensor_id)
                 continue
 
             label = self.device_map.get(sensor_id, sensor_id)
@@ -75,3 +76,7 @@ class DS18B20(Source):
                 metrics.append(self.createEvent('ok', f'{sensor_id} Temperature C', temp, prefix=label))
 
         return metrics
+
+    async def get(self):
+        """Polls all sensors and sends metrics in a batch every POLL_INTERVAL seconds."""
+        return await asyncio.to_thread(self.read_sensors)
