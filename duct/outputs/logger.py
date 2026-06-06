@@ -21,7 +21,7 @@ class Logger(Output):
     """
 
     def __init__(self, *a, **kw):
-        Output.__init__(self, *a, **kw)
+        super().__init__(*a, **kw)
         if self.config.get('logfile'):
             self.logfile = open(  # pylint: disable=consider-using-with
                 self.config.get('logfile'), 'at', encoding='utf-8')
@@ -32,7 +32,7 @@ class Logger(Output):
         if self.logfile:
             self.logfile.close()
 
-    def eventsReceived(self, events):
+    async def eventsReceived(self, events):
         for ev in events:
             if self.logfile:
                 self.logfile.write(repr(ev) + '\n')

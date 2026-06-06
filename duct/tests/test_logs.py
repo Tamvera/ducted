@@ -6,62 +6,62 @@ from duct.logs import follower, parsers
 
 
 class TestLogs:
-    def test_logfollow(self):
+    def test_logfollow(self, tmp_path):
         try:
-            os.unlink('test.log.lf')
-            os.unlink('test.log')
+            os.unlink(tmp_path/'test.log.lf')
+            os.unlink(tmp_path/'test.log')
         except Exception:
             pass
 
-        log = open('test.log', 'wt')
-        log.write('foo\nbar\n')
-        log.flush()
+        with open(tmp_path/'test.log', 'wt') as log:
+            log.write('foo\nbar\n')
+            log.flush()
 
-        f = follower.LogFollower('test.log', tmp_path=".", history=True)
+            f = follower.LogFollower(str(tmp_path/'test.log'), tmp_path=tmp_path, history=True)
 
-        r = f.get()
+            r = f.get()
 
-        log.write('test')
-        log.flush()
+            log.write('test')
+            log.flush()
 
-        r2 = f.get()
+            r2 = f.get()
 
-        log.write('ing\n')
-        log.flush()
+            log.write('ing\n')
+            log.flush()
 
-        r3 = f.get()
+            r3 = f.get()
 
-        assert r[0] == 'foo'
-        assert r[1] == 'bar'
+            assert r[0] == 'foo'
+            assert r[1] == 'bar'
 
-        assert r2 == []
-        assert r3[0] == 'testing'
+            assert r2 == []
+            assert r3[0] == 'testing'
 
-        log.close()
+        
 
         # Move inode
-        os.rename('test.log', 'testold.log')
+        os.rename(tmp_path/'test.log', tmp_path/'testold.log')
 
-        log = open('test.log', 'wt')
-        log.write('foo2\nbar2\n')
-        log.close()
+        with open(tmp_path/'test.log', 'wt') as log:
+            log.write('foo2\nbar2\n')
+            log.close()
 
-        r = f.get()
+            r = f.get()
 
-        assert r[0] == 'foo2'
-        assert r[1] == 'bar2'
+            assert r[0] == 'foo2'
+            assert r[1] == 'bar2'
 
-        # Go backwards
-        log = open('test.log', 'wt')
-        log.write('foo3\n')
-        log.close()
+            # Go backwards
+            log = open(tmp_path/'test.log', 'wt')
+            log.write('foo3\n')
+            log.close()
 
-        r = f.get()
+            r = f.get()
 
-        assert r[0] == 'foo3'
+            assert r[0] == 'foo3'
 
-        os.unlink('test.log')
-        os.unlink('testold.log')
+        os.unlink(tmp_path/'test.log')
+        os.unlink(tmp_path/'testold.log')
 
     def test_apache_parser(self):
         log = parsers.ApacheLogParser('combined')

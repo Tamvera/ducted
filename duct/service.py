@@ -214,8 +214,7 @@ class DuctService(object):
                 log.debug("Sending events %s to %s", events, route)
 
             for output in self.outputs[route]:
-                asyncio.get_event_loop().call_soon(
-                    output.eventsReceived, events)
+                asyncio.ensure_future(output.eventsReceived(events))
 
     def sendEvent(self, source, events):
         """Callback that all event sources call when they have new events"""

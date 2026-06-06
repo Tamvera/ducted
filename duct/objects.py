@@ -108,7 +108,7 @@ class Output(object):
     async def createClient(self):
         """Coroutine that sets up the output connection"""
 
-    def eventsReceived(self, events):
+    async def eventsReceived(self, events):
         """Receives a list of events and queues them"""
         if self.maxsize > 0:
             if len(self.events) < self.maxsize:

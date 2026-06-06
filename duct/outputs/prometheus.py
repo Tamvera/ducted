@@ -67,7 +67,7 @@ class Prometheus(Output):
         if self._runner:
             await self._runner.cleanup()
 
-    def eventsReceived(self, events):
+    async def eventsReceived(self, events):
         for event in events:
             metric_name = self.prefix + event.service.replace('.', '_')
             if event.attributes:

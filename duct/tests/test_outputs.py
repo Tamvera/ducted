@@ -39,7 +39,7 @@ class TestOutputs:
         await out.createClient()
         out.client._request = _fake_request
 
-        out.eventsReceived([event])
+        await out.eventsReceived([event])
         await out._tick()
 
         meta, metric = last_request['args'][1].strip('\n').split('\n')
@@ -59,13 +59,72 @@ class TestOutputs:
         await out.createClient()
         out.client._request = _fake_request
 
-        out.eventsReceived([event])
+        await out.eventsReceived([event])
         await out._tick()
 
         request_data = json.loads(last_request['args'][1])[0]
 
         assert request_data['metric'] == 'sky'
 
+    @pytest.mark.asyncio
+    async def test_graphite_output(self, event):
+        service = DuctService(TestConfig({
+            "outputs":[
+                {"output":"duct.outputs.graphite.Graphite"}
+            ]
+        }))
+
+        async def push_batch_to_graphite(m):
+            assert m[0][0] == "testhost.sky"
+
+        await service.startService()
+        try:
+            output = service.outputs[None][0]
+        
+            output.push_batch_to_graphite = push_batch_to_graphite
+            await output.eventsReceived([event])
+        finally:
+            await service.stopService()
+
+    @pytest.mark.asyncio
+    async def test_graphite_output_prefix(self, event):
+        service = DuctService(TestConfig({
+            "outputs":[
+                {"output":"duct.outputs.graphite.Graphite", "prefix": "foo"}
+            ]
+        }))
+
+        async def push_batch_to_graphite(m):
+            assert m[0][0] == "foo.testhost.sky"
+
+        await service.startService()
+        try:
+            output = service.outputs[None][0]
+        
+            output.push_batch_to_graphite = push_batch_to_graphite
+            await output.eventsReceived([event])
+        finally:
+            await service.stopService()
+
+    @pytest.mark.asyncio
+    async def test_graphite_output_prefix_no_host(self, event):
+        service = DuctService(TestConfig({
+            "outputs":[
+                {"output":"duct.outputs.graphite.Graphite", "prefix": "foo", "prefix_hostname": False}
+            ]
+        }))
+
+        async def push_batch_to_graphite(m):
+            assert m[0][0] == "foo.sky"
+
+        await service.startService()
+        try:
+            output = service.outputs[None][0]
+        
+            output.push_batch_to_graphite = push_batch_to_graphite
+            await output.eventsReceived([event])
+        finally:
+            await service.stopService()
 
 class TestNATSOutput:
     @pytest.mark.asyncio
@@ -73,7 +132,7 @@ class TestNATSOutput:
         nats_mod.nats = FakeNATS()
         out = nats_mod.Nats({}, service)
         await out.createClient()
-        out.eventsReceived([event])
+        await out.eventsReceived([event])
         await out._tick()
 
         topic, payload = out.nc.messages[0]
@@ -91,7 +150,7 @@ class TestNATSOutput:
         nats_mod.nats = FakeNATS()
         out = nats_mod.Nats({}, service)
         await out.createClient()
-        out.eventsReceived([ev])
+        await out.eventsReceived([ev])
         await out._tick()
 
         _, payload = out.nc.messages[0]
@@ -108,7 +167,7 @@ class TestNATSOutput:
         nats_mod.nats = FakeNATS()
         out = nats_mod.Nats({"format": "senml-cbor"}, service)
         await out.createClient()
-        out.eventsReceived([event])
+        await out.eventsReceived([event])
         await out._tick()
 
         topic, payload = out.nc.messages[0]
@@ -124,7 +183,7 @@ class TestNATSOutput:
         nats_mod.nats = FakeNATS()
         out = nats_mod.Nats({"format": "json"}, service)
         await out.createClient()
-        out.eventsReceived([event])
+        await out.eventsReceived([event])
         await out._tick()
 
         topic, payload = out.nc.messages[0]
@@ -140,7 +199,7 @@ class TestNATSOutput:
         nats_mod.nats = FakeNATS()
         out = nats_mod.Nats({"prefix": "metrics"}, service)
         await out.createClient()
-        out.eventsReceived([event])
+        await out.eventsReceived([event])
         await out._tick()
 
         topic, _ = out.nc.messages[0]
@@ -152,7 +211,7 @@ class TestNATSOutput:
         nats_mod.nats = FakeNATS()
         out = nats_mod.Nats({}, service)
         await out.createClient()
-        out.eventsReceived([event])
+        await out.eventsReceived([event])
         await out._tick()
 
         topic, _ = out.nc.messages[0]
@@ -165,7 +224,7 @@ class TestNATSOutput:
         await out.createClient()
         assert out.js is not None
 
-        out.eventsReceived([event])
+        await out.eventsReceived([event])
         await out._tick()
 
         assert len(out.nc.messages) == 1
@@ -188,7 +247,7 @@ class TestNATSOutput:
         out.nc = fake
         out.js = None
         out.use_jetstream = False
-        out.eventsReceived([event])
+        await out.eventsReceived([event])
         # Should not raise
         await out.sendEvents(out.events)
 

@@ -158,7 +158,7 @@ class RiemannUDP(Output):
         self.protocol = await riemann.create_riemann_udp(server, port)
         log.info('Riemann UDP ready for %s:%s', server, port)
 
-    def eventsReceived(self, events):
+    async def eventsReceived(self, events):
         """Receives a list of events and transmits them to Riemann"""
         if self.protocol:
             self.protocol.sendEvents(events)

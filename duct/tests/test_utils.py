@@ -4,13 +4,14 @@ from duct import utils
 
 
 class TestUtils:
-    def test_persistent_cache(self):
-        pc = utils.PersistentCache(location='test.cache')
+    def test_persistent_cache(self, tmp_path):
+        loc = str(tmp_path/'cache')
+        pc = utils.PersistentCache(location=loc)
 
         pc.set('foo', 'bar')
         pc.set('bar', 'baz')
 
-        pc2 = utils.PersistentCache(location='test.cache')
+        pc2 = utils.PersistentCache(location=loc)
 
         assert pc2.get('foo')[1] == 'bar'
 
