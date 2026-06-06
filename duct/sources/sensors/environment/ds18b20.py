@@ -8,6 +8,7 @@
 # pylint: disable=W1514
 import asyncio
 import os
+import pathlib
 import logging
 
 from zope.interface import implementer
@@ -40,16 +41,18 @@ class DS18B20(Source):
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
 
-        self.device_path = self.config.get('device_path', '/sys/bus/w1/devices/')
+        self.device_path = pathlib.Path(self.config.get('device_path', '/sys/devices/'))
 
         self.device_map = self.config.get('device_map', {})
 
         self.ignore_unmapped = self.config.get('ignore_unmapped', False)
 
-    def read_temp(self, sensor_id):
+        self.busses = [d for d in os.listdir(self.device_path) if d.startswith('w1_bus_master')]
+
+    def read_temp(self, bus, sensor_id):
         """Reads the temperature from a 1-Wire sensor device."""
         try:
-            with open(os.path.join(self.device_path, sensor_id, 'w1_slave'), 'r') as f:
+            with open(self.device_path/bus/sensor_id/'w1_slave', 'r') as f:
                 lines = f.readlines()
             if lines[0].strip()[-3:] != 'YES':
                 return None  # CRC check failed
@@ -59,9 +62,9 @@ class DS18B20(Source):
             log.warning("Error reading sensor %s: %s", sensor_id, str(e))
             return None
 
-    def read_sensors(self):
+    def read_sensors(self, bus):
         """Read all sensors on the device path"""
-        sensors = [d for d in os.listdir(self.device_path) if d.startswith('28-')]
+        sensors = [d for d in os.listdir(self.device_path/bus) if d.startswith('28-')]
         metrics = []
 
         for sensor_id in sensors:
@@ -70,7 +73,7 @@ class DS18B20(Source):
                 continue
 
             label = self.device_map.get(sensor_id, sensor_id)
-            temp = self.read_temp(sensor_id)
+            temp = self.read_temp(bus, sensor_id)
 
             if temp is not None:
                 metrics.append(self.createEvent('ok', f'{sensor_id} Temperature C', temp, prefix=label))
@@ -79,4 +82,7 @@ class DS18B20(Source):
 
     async def get(self):
         """Polls all sensors and sends metrics in a batch every POLL_INTERVAL seconds."""
-        return await asyncio.to_thread(self.read_sensors)
+        metrics = await asyncio.gather(
+            *(asyncio.to_thread(self.read_sensors, bus) for bus in self.busses))
+
+        return sum(metrics, [])

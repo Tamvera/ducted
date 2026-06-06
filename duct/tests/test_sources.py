@@ -770,13 +770,13 @@ class TestNATSSource:
 class TestSensorSources:
     @pytest.mark.asyncio
     async def test_ds18b20(self, duct_service, tmp_path):
-
+        os.mkdir(tmp_path/'w1_bus_master1')
         def add_fake_sensor(sensor, data):
             try:
-                os.mkdir(tmp_path/sensor)
+                os.mkdir(tmp_path/'w1_bus_master1'/sensor)
             except FileExistsError:
                 pass
-            with open(tmp_path/sensor/'w1_slave', 'w+b') as f:
+            with open(tmp_path/'w1_bus_master1'/sensor/'w1_slave', 'w+b') as f:
                 f.write(data.encode('ascii'))
 
         test_sensor = "28-94ebc5356461"
