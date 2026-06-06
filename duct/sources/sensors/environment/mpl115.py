@@ -1,7 +1,7 @@
 """
-.. module:: environment
+.. module:: mpl115
    :platform: Any
-   :synopsis: Sources for interfacing with environmental sensors
+   :synopsis: MPL115 i2c sensor
 
 .. moduleauthor:: Colin Alston <colin@tamvera.com>
 """

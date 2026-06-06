@@ -12,6 +12,7 @@ import duct.sources.nats as nats_src_mod
 from duct.sources.linux import basic, process, sensors
 from duct.sources import riak, nginx, network, apache, munin, haproxy, nats
 from duct.sources.database import elasticsearch, postgresql, memcache
+from duct.sources.sensors.environment import ds18b20
 from duct.service import DuctService
 from duct.tests import globs
 from duct.protocol.senml import event_to_senml, event_to_senml_cbor, event_to_json
@@ -761,3 +762,50 @@ class TestNATSSource:
         )
         await source.startTimer()
         assert captured.get("user_credentials") == "/creds.creds"
+
+# ---------------------------------------------------------------------------
+# Sensors
+# ---------------------------------------------------------------------------
+
+class TestSensorSources:
+    @pytest.mark.asyncio
+    async def test_ds18b20(self, duct_service, tmp_path):
+
+        def add_fake_sensor(sensor, data):
+            try:
+                os.mkdir(tmp_path/sensor)
+            except FileExistsError:
+                pass
+            with open(tmp_path/sensor/'w1_slave', 'w+b') as f:
+                f.write(data.encode('ascii'))
+
+        test_sensor = "28-94ebc5356461"
+        add_fake_sensor(test_sensor,
+                        'c0 01 55 00 7f ff 0c 10 13 : crc=13 YES\nc0 01 55 00 7f ff 0c 10 13 t=28000\n')
+
+        test_sensor2 = "28-67dfc5356461"
+        add_fake_sensor(test_sensor2,
+                        '93 01 55 00 7f ff 0c 10 cb : crc=cb YES\n93 01 55 00 7f ff 0c 10 cb t=25187\n')
+
+        source = ds18b20.DS18B20({
+            "service": "temp",
+            "device_path": tmp_path
+        }, _qb, duct_service)
+
+        events = await source.get()
+        for ev in events:
+            if ev.service == f"temp.{test_sensor}":
+                assert ev.metric == 28.0
+            else:
+                assert ev.metric == 25.187
+
+        source = ds18b20.DS18B20({
+            "service": "temp",
+            "device_path": tmp_path,
+            "device_map": {test_sensor2: "test2"},
+            "ignore_unmapped": True
+        }, _qb, duct_service)
+
+        events = await source.get()
+
+        assert events[0].service == 'temp.test2'

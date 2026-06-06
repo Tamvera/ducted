@@ -1,4 +1,4 @@
-# Config file for Duct 
+# Config file for Duct
 
 # Output details
 outputs:
@@ -23,7 +23,7 @@ sources:
     - service: load
       source: duct.sources.linux.basic.LoadAverage
       interval: 2.0
-      
+
     - service: cpu
       source: duct.sources.linux.basic.CPU
       interval: 2.0
