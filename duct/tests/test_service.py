@@ -112,8 +112,12 @@ async def riemann_server():
 @pytest.mark.asyncio
 async def test_service_sends_event(riemann_server):
     srv, port = riemann_server
-    service = DuctService(TestConfig({"server": "localhost", "port": port}))
-    print("Starting service")
+    service = DuctService(TestConfig({
+        "outputs":[
+            {"output":"duct.outputs.riemann.RiemannTCP", "server": "localhost", "port": port}
+        ]
+    }))
+
     await service.startService()
     try:
         [] = await srv.wait_for_messages(0)

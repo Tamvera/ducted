@@ -186,7 +186,7 @@ class HTTPRequest(object):
 class PersistentCache(object):
     """A basic dictionary cache backed by a JSON file."""
 
-    def __init__(self, location='/var/lib/duct/cache'):
+    def __init__(self, location):
         self.store = {}
         self.location = location
         self.mtime = 0

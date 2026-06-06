@@ -38,43 +38,26 @@ class DuctService(object):
 
         self.config = config
 
-        if os.path.exists('/var/lib/duct'):
-            sys.path.append('/var/lib/duct')
+        if os.path.exists(self.config.base_path):
+            sys.path.append(self.config.base_path)
 
-        self.debug = self.config['debug']
-        self.ttl = self.config['ttl']
-        self.stagger = self.config['stagger']
+        self.debug = self.config.debug
+        self.ttl = self.config.ttl
+        self.stagger = self.config.stagger
 
-        # Backward compatibility
-        self.server = self.config['server']
-        self.port = self.config['port']
-        self.proto = self.config['proto']
-        self.inter = self.config['interval']
+        self.inter = self.config.interval
 
-        if self.debug:
-            print("config:", repr(config))
+        log.debug("config: %s", repr(config))
 
         self.setupSources(self.config)
 
     async def setupOutputs(self, config):
         """Set up output processors"""
 
-        if self.server:
-            if self.proto == 'tcp':
-                defaultOutput = {
-                    'output': 'duct.outputs.riemann.RiemannTCP',
-                    'server': self.server,
-                    'port': self.port
-                }
-            else:
-                defaultOutput = {
-                    'output': 'duct.outputs.riemann.RiemannUDP',
-                    'server': self.server,
-                    'port': self.port
-                }
-            outputs = config.get('outputs') or [defaultOutput]
-        else:
-            outputs = config.get('outputs', [])
+        outputs = config.get('outputs', [])
+
+        if len(outputs) < 1:
+            log.warning("No outputs configured!")
 
         for output in outputs:
             log.info("Setting up %s", output['output'])
