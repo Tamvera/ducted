@@ -34,6 +34,8 @@ class DuctConfig(BaseModel):
     # Debugging
     debug: int = 0
 
+    default_route: Optional[str] = None
+
     # Sources and outputs
     sources: list = []
     outputs: Optional[list] = []
