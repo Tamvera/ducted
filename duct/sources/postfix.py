@@ -22,8 +22,6 @@ log = logging.getLogger(__name__)
 class Postfix(Source):
     """Postfix checks
 
-    **Configuration arguments:**
-
     :param spool: Postfix spool directory (default: /var/spool/postfix)
     :type spool: str.
 

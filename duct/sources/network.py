@@ -24,8 +24,6 @@ log = logging.getLogger(__name__)
 class HTTP(Source):
     """Performs an HTTP request
 
-    **Configuration arguments:**
-
     :param url: HTTP URL
     :type url: str.
     :param method: HTTP request method to use (default GET)
@@ -85,8 +83,6 @@ class HTTP(Source):
 @implementer(IDuctSource)
 class Ping(Source):
     """Performs an Ping checks against a destination
-
-    **Configuration arguments:**
 
     :param destination: Host name or IP address to ping
     :type destination: str.

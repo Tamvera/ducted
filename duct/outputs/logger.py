@@ -14,8 +14,6 @@ log = logging.getLogger(__name__)
 class Logger(Output):
     """Logger output
 
-    **Configuration arguments:**
-
     :param logfile: Logfile (default: write to standard log)
     :type logfile: str
     """

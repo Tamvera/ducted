@@ -20,8 +20,6 @@ log = logging.getLogger(__name__)
 class Queues(Source):
     """Query llen from redis-cli
 
-    **Configuration arguments:**
-
     :param queue: Queue name (defaults to 'celery', just because)
     :type queue: str.
     :param db: DB number

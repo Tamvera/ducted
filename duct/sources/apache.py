@@ -17,8 +17,6 @@ from duct.utils import HTTPRequest
 class Apache(Source):
     """Reads Apache mod_status output
 
-    **Configuration arguments:**
-
     :param url: URL to fetch status from
     :type url: str.
 

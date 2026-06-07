@@ -21,8 +21,6 @@ log = logging.getLogger(__name__)
 class Queues(Source):
     """Returns Queue information for a particular vhost
 
-    **Configuration arguments:**
-
     :param vhost: Vhost name
     :type vhost: str.
 

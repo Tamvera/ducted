@@ -45,8 +45,6 @@ async def _get_memcache_stats(host, port, timeout=5.0):
 class Memcache(Source):
     """Reads memcache metrics
 
-    **Configuration arguments:**
-
     :param host: Database host (default localhost)
     :type host: str.
     :param port: Database port (default 11211)

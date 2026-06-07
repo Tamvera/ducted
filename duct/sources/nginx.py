@@ -24,8 +24,6 @@ from duct.logs import parsers, follower
 class Nginx(Source):
     """Reads Nginx stub_status
 
-    **Configuration arguments:**
-
     :param stats_url: URL to fetch stub_status from
     :type stats_url: str.
 
@@ -83,8 +81,6 @@ class Nginx(Source):
 class NginxLogMetrics(Source):
     """Tails Nginx log files, parses them and returns metrics for data usage
     and requests against other fields.
-
-    **Configuration arguments:**
 
     :param log_format: Log format passed to parser, same as the config
                        definition
@@ -225,8 +221,6 @@ class NginxLogMetrics(Source):
 class NginxLog(Source):
     """Tails Nginx log files, parses them and returns log events for outputs
     which support them.
-
-    **Configuration arguments:**
 
     :param log_format: Log format passed to parser, same as the config
                        definition (default: combined)

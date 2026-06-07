@@ -43,8 +43,6 @@ class LoadAverage(Source):
 class DiskIO(Source):
     """Reports disk IO statistics per device
 
-    **Configuration arguments:**
-
     :param devices: List of devices to check (optional)
     :type devices: list.
 
@@ -334,8 +332,6 @@ class Memory(Source):
 class DiskFree(Source):
     """Returns the free space for all mounted filesystems
 
-    **Configuration arguments:**
-
     :param disks: List of devices to check (optional)
     :type disks: list.
 
@@ -379,8 +375,6 @@ class DiskFree(Source):
 @implementer(IDuctSource)
 class Network(Source):
     """Returns all network interface statistics
-
-    **Configuration arguments:**
 
     :param interfaces: List of interfaces to check (optional)
     :type interfaces: list.

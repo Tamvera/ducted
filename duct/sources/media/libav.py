@@ -18,8 +18,6 @@ class DarwinRTSP(Source):
     """Makes avprobe requests of a Darwin RTSP sample stream
     (sample_100kbit.mp4)
 
-    **Configuration arguments:**
-
     :param destination: Host name or IP address to check
     :type method: str.
 

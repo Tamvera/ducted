@@ -21,8 +21,6 @@ log = logging.getLogger(__name__)
 class PostgreSQL(Source):
     """Reads PostgreSQL metrics
 
-    **Configuration arguments:**
-
     :param host: Database host
     :type host: str.
     :param port: Database port

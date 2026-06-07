@@ -18,8 +18,6 @@ from duct.protocol import elasticsearch
 class ElasticSearch(Source):
     """Reads elasticsearch metrics
 
-    **Configuration arguments:**
-
     :param url: Elasticsearch base URL (default: http://localhost:9200)
     :type url: str.
     :param user: Basic auth username

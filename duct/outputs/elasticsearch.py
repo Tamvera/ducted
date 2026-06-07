@@ -17,8 +17,6 @@ log = logging.getLogger(__name__)
 class ElasticSearch(Output):
     """ElasticSearch HTTP API output
 
-    **Configuration arguments:**
-
     :param url: Elasticsearch URL (default: http://localhost:9200)
     :type url: str
     :param maxsize: Maximum queue backlog size (default: 250000, 0 disables)

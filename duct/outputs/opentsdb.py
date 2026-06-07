@@ -16,8 +16,6 @@ log = logging.getLogger(__name__)
 class OpenTSDB(Output):
     """OpenTSDB HTTP API output
 
-    **Configuration arguments:**
-
     :param url: URL (default: http://localhost:4242)
     :type url: str
     :param maxsize: Maximum queue backlog size (default: 250000, 0 disables)

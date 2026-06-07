@@ -19,8 +19,6 @@ log = logging.getLogger(__name__)
 class RiemannTCP(Output):
     """Riemann TCP output
 
-    **Configuration arguments:**
-
     :param server: Riemann server hostname (default: localhost)
     :type server: str.
     :param port: Riemann server port (default: 5555)
@@ -137,8 +135,6 @@ class RiemannTCP(Output):
 
 class RiemannUDP(Output):
     """Riemann UDP output (spray-and-pray mode)
-
-    **Configuration arguments:**
 
     :param server: Riemann server IP address (default: 127.0.0.1)
     :type server: str.

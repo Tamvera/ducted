@@ -16,8 +16,6 @@ log = logging.getLogger(__name__)
 class Prometheus(Output):
     """Prometheus scrape-endpoint output
 
-    **Configuration arguments:**
-
     :param port: Listening port (default: 9100)
     :type port: int.
     :param metric_path: Metrics path (default: metrics)

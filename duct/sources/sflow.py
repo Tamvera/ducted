@@ -157,8 +157,6 @@ class sFlowReceiver(server.DatagramReceiver):
 class sFlow(Source):
     """Provides an sFlow UDP server Source.
 
-    **Configuration arguments:**
-
     :param port: UDP port to listen on (default: 6343)
     :type port: int.
     :param dnslookup: Enable reverse DNS lookup for device IPs (default: True)

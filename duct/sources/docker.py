@@ -18,8 +18,6 @@ from duct.aggregators import Counter64
 class ContainerStats(Source):
     """Returns stats for Docker containers on this host
 
-    **Configuration arguments:**
-
     :param url: Docker stats URL
     :type url: str.
 

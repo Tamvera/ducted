@@ -17,8 +17,6 @@ class Graphite(Output):
     By default events are named {prefix}.{hostname}.{source service} unless
     prefix_hostname is set to False
 
-    **Configuration arguments:**
-
     :param server: Graphite server hostname (default: localhost)
     :type server: str.
     :param port: Graphite server port (default: 2003)

@@ -14,8 +14,6 @@ from duct.utils import HTTPRequest
 class Bosun(opentsdb.OpenTSDB):
     """Bosun HTTP API output
 
-    **Configuration arguments:**
-
     :param url: URL (default: http://localhost:4242)
     :type url: str.
     :param maxsize: Maximum queue backlog size (default: 250000, 0 disables)

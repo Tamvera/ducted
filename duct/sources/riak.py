@@ -18,8 +18,6 @@ from duct.utils import HTTPRequest
 class RiakStats(Source):
     """Returns GET/PUT rates for a Riak node
 
-    **Configuration arguments:**
-
     :param url: Riak stats URL
     :type url: str.
     :param useragent: User-Agent header to use

@@ -61,8 +61,6 @@ class RiemannTCP(Source):
     """Provides a listening Riemann TCP server that accepts metrics
     and proxies them to the queue.
 
-    **Configuration arguments:**
-
     :param port: Port to listen on (default: 5555)
     :type port: int.
     """

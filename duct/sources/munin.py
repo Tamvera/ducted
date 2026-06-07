@@ -66,8 +66,6 @@ class MuninClient:
 class MuninNode(Source):
     """Connects to munin-node and retrieves all metrics
 
-    **Configuration arguments:**
-
     :param host: munin-node hostname (probably localhost)
     :type host: str.
     :param port: munin-node port (probably 4949)

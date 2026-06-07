@@ -22,8 +22,6 @@ class Function(Source):
 
     Or the constants e, pi, and variable x
 
-    **Configuration arguments:**
-
     :param dx: Resolution with time (steps of x)
     :type dx: float.
     :param function: Function to produce

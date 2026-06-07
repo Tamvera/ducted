@@ -21,8 +21,6 @@ from duct.aggregators import Counter
 class HAProxy(Source):
     """Reads Nginx stub_status
 
-    **Configuration arguments:**
-
     :param url: URL to fetch stats from
     :type url: str.
     :param user: Username

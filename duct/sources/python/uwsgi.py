@@ -19,8 +19,6 @@ from duct.objects import Source
 class Emperor(Source):
     """Connects to UWSGI Emperor stats and creates useful metrics
 
-    **Configuration arguments:**
-
     :param host: Hostname (default localhost)
     :type host: str.
     :param port: Port

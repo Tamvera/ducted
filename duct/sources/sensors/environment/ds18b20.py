@@ -27,8 +27,6 @@ class DS18B20(Source):
     used on a Raspberry Pi with the w1-gpio device tree overlay. These can be slow to read
     if you have a lot of them, so make sure you have a sufficient interval set.
 
-    **Configuration arguments:**
-
     :param device_path: Path for w1_therm and w1_gpio devices
     :type device_path: str
     :param device_map: A dictionary structure re-mapping sensor serials to custom names

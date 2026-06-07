@@ -25,8 +25,6 @@ log = logging.getLogger(__name__)
 class Nats(Source):
     """NATS source
 
-    **Configuration arguments:**
-
     :param servers: List of NATS URIs (default: ["nats://localhost:4222"])
     :type servers: list
 

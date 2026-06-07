@@ -69,8 +69,6 @@ class SNMPConnection(object):
 class SNMP(Source):
     """Connects to an SNMP agent and retrieves OIDs.
 
-    **Configuration arguments:**
-
     :param ip: SNMP agent host (default: 127.0.0.1)
     :type ip: str.
     :param port: SNMP port (default: 161)
@@ -143,8 +141,6 @@ class SNMP(Source):
 
 class SNMPCisco837(SNMP):
     """Connects to a Cisco 837 and makes metrics.
-
-    **Configuration arguments:**
 
     :param ip: SNMP agent host (default: 127.0.0.1)
     :param port: SNMP port (default: 161)

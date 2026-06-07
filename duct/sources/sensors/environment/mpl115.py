@@ -35,8 +35,6 @@ class MPL115(Source):
     This source was based on:
     https://github.com/FaBoPlatform/FaBoBarometer-MPL115-Python
 
-    **Configuration arguments:**
-
     :param address: I2C address of the sensor (default 0x60)
     :type address: hex.
     :param smbus: Bus number (default 1)

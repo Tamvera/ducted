@@ -20,8 +20,6 @@ log = logging.getLogger(__name__)
 class Stats(Source):
     """Returns stats from unbound-control
 
-    **Configuration arguments:**
-
     :param executable: Path to unbound-control executable
                        (default: /usr/sbin/unbound-control)
     :type executable: str.
