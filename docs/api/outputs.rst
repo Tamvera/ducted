@@ -15,6 +15,13 @@ duct.outputs.elasticsearch
    :members:
    :show-inheritance:
 
+duct.outputs.influxdb3
+============================
+
+.. automodule:: duct.outputs.influxdb3
+   :members:
+   :show-inheritance:
+
 duct.outputs.graphite
 ============================
 

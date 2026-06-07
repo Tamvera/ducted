@@ -5,8 +5,9 @@ import pytest
 import pytest_asyncio
 
 import duct.outputs.nats as nats_mod
-from duct.outputs import elasticsearch, opentsdb, nats
+from duct.outputs import elasticsearch, opentsdb, nats, influxdb3
 from duct.objects import Event
+from duct.protocol.influxdb3 import to_line_protocol
 from duct.service import DuctService
 
 from duct.protocol.senml import senml_to_event, senml_cbor_to_event, json_to_event
@@ -125,6 +126,98 @@ class TestOutputs:
             await output.eventsReceived([event])
         finally:
             await service.stopService()
+
+class TestInfluxDB3Output:
+    @pytest.mark.asyncio
+    async def test_influxdb3_basic(self, service, event):
+        last_request = {}
+
+        async def _fake_write(lines):
+            last_request['lines'] = lines
+
+        out = influxdb3.InfluxDB3({}, service)
+        await out.createClient()
+        out.client.write = _fake_write
+
+        await out.eventsReceived([event])
+        await out._tick()
+
+        assert len(last_request['lines']) == 1
+        line = last_request['lines'][0]
+        assert line.startswith('sky,')
+        assert 'host=testhost' in line
+        assert 'value=1.0' in line
+
+    @pytest.mark.asyncio
+    async def test_influxdb3_attributes_become_tags(self, service, event):
+        last_request = {}
+
+        async def _fake_write(lines):
+            last_request['lines'] = lines
+
+        out = influxdb3.InfluxDB3({}, service)
+        await out.createClient()
+        out.client.write = _fake_write
+
+        await out.eventsReceived([event])
+        await out._tick()
+
+        line = last_request['lines'][0]
+        assert 'chicken=little' in line
+
+    @pytest.mark.asyncio
+    async def test_influxdb3_key_value_tags(self, service):
+        ev = Event('ok', 'cpu', 'CPU usage', 0.5, 60.0,
+                   tags=['env=prod', 'region=eu'], hostname='testhost')
+        last_request = {}
+
+        async def _fake_write(lines):
+            last_request['lines'] = lines
+
+        out = influxdb3.InfluxDB3({}, service)
+        await out.createClient()
+        out.client.write = _fake_write
+
+        await out.eventsReceived([ev])
+        await out._tick()
+
+        line = last_request['lines'][0]
+        assert 'env=prod' in line
+        assert 'region=eu' in line
+
+    @pytest.mark.asyncio
+    async def test_influxdb3_write_failure_requeues(self, service, event):
+        call_count = {'n': 0}
+
+        async def _failing_write(*_):
+            call_count['n'] += 1
+            raise OSError('connection refused')
+
+        out = influxdb3.InfluxDB3({}, service)
+        await out.createClient()
+        out.client.write = _failing_write
+
+        await out.eventsReceived([event])
+        await out._tick()
+
+        assert call_count['n'] == 1
+        assert len(out.events) == 1
+
+    def test_to_line_protocol_basic(self):
+        line = to_line_protocol('cpu', {'host': 'h1'}, {'value': 0.5}, 1000)
+        assert line == 'cpu,host=h1 value=0.5 1000'
+
+    def test_to_line_protocol_no_tags(self):
+        line = to_line_protocol('cpu', {}, {'value': 1}, 1000)
+        assert line == 'cpu value=1i 1000'
+
+    def test_to_line_protocol_escaping(self):
+        line = to_line_protocol('my measurement', {'tag key': 'tag val'},
+                                {'value': 1.0}, 0)
+        assert r'my\ measurement' in line
+        assert r'tag\ key' in line
+        assert r'tag\ val' in line
+
 
 class TestNATSOutput:
     @pytest.mark.asyncio
