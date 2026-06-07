@@ -28,7 +28,6 @@ API Documentation:
 .. toctree::
     :maxdepth: 2
 
-    api/duct.rst
     api/protocol.rst
     api/logs.rst
     api/sources.rst

@@ -1,6 +1,7 @@
 """
 .. module:: elasticsearch
    :synopsis: Elasticsearch protocol module
+   :no-index:
 
 .. moduleauthor:: Colin Alston <colin@tamvera.com>
 """

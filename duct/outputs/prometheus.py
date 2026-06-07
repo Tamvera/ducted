@@ -20,7 +20,7 @@ class Prometheus(Output):
     :type port: int.
     :param metric_path: Metrics path (default: metrics)
     :type metric_path: str.
-    :param prefix: Prometheus metric prefix (default: duct_)
+    :param prefix: Prometheus metric prefix (default: duct\\_)
     :type prefix: str.
     """
 

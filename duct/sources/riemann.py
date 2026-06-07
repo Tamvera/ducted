@@ -2,6 +2,7 @@
 .. module:: riemann
    :platform: Unix
    :synopsis: A source module which provides a Riemann server
+   :no-index:
 
 .. moduleauthor:: Colin Alston <colin@tamvera.com>
 """

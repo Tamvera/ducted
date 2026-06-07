@@ -2,6 +2,7 @@
 """
 .. module:: riemann
    :synopsis: Riemann protocol module
+   :no-index:
 
 .. moduleauthor:: Colin Alston <colin@tamvera.com>
 """

@@ -1,6 +1,7 @@
 """
 .. module:: nats
    :synopsis: Source which subscribes to NATS topics for events
+   :no-index:
 
 .. moduleauthor:: Colin Alston <colin@tamvera.com>
 """

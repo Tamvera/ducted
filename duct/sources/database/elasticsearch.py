@@ -2,6 +2,7 @@
 .. module:: elasticsearch
    :platform: Unix
    :synopsis: A source module for elasticsearch stats
+   :no-index:
 
 .. moduleauthor:: Colin Alston <colin@tamvera.com>
 """

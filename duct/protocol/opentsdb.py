@@ -1,6 +1,7 @@
 """
 .. module:: opentsdb
    :synopsis: OpenTSDB protocol module
+   :no-index:
 
 .. moduleauthor:: Colin Alston <colin@tamvera.com>
 """

@@ -1,6 +1,7 @@
 """
 .. module:: logger
    :synopsis: Output which sends events to the standard logging output
+   :no-index:
 
 .. moduleauthor:: Colin Alston <colin@tamvera.com>
 """

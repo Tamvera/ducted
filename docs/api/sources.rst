@@ -81,12 +81,6 @@ duct.sources.linux.sensors
    :members:
    :show-inheritance:
 
-duct.sources.mail
-====================
-
-.. automodule:: duct.sources.mail
-   :members:
-   :show-inheritance:
 
 duct.sources.media
 ====================
