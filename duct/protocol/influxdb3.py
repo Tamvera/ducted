@@ -4,7 +4,6 @@
 
 .. moduleauthor:: Colin Alston <colin@tamvera.com>
 """
-from base64 import b64encode
 
 from duct import utils
 
