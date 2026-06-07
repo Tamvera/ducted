@@ -63,7 +63,10 @@ def senml_pack_to_event(pack: list, default_ttl: float = 60.0) -> Event:
 
         if sub is None:
             service = svc
-            metric = float(record.get("v", record.get("vs", 0.0)))
+            if record.get("v", 0.0) is None:
+                metric = None
+            else:
+                metric = float(record.get("v", 0.0))
         elif sub == "state":
             state = record.get("vs", "ok")
         elif sub == "description":
