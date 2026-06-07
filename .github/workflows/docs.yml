@@ -26,7 +26,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install sphinx alabaster
+          pip install sphinx "blue-nebula-sphinx @ git+https://github.com/Tamvera/blue-nebula-sphinx.git"
           pip install -e .
 
       - name: Build docs
