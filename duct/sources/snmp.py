@@ -36,8 +36,8 @@ class SNMPConnection(object):
         self.community = community
         self.engine = SnmpEngine()
 
-    async def walk(self, oid):
-        """Walk OIDs under `oid`. Returns a list of (oid, value) tuples."""
+    async def _do_walk(self, obj_type, mp_model=0):
+        """Shared walk implementation. Returns a list of (oid, value) tuples."""
         results = []
         target = await UdpTransportTarget.create(
             (self.host, self.port), timeout=5, retries=2
@@ -45,10 +45,10 @@ class SNMPConnection(object):
         async for (err_indication, err_status, err_index,
                    var_bind_table) in walk_cmd(
             self.engine,
-            CommunityData(self.community, mpModel=0),
+            CommunityData(self.community, mpModel=mp_model),
             target,
             ContextData(),
-            ObjectType(ObjectIdentity(oid)),
+            obj_type,
             lexicographicMode=False,
         ):
             if err_indication:
@@ -61,8 +61,23 @@ class SNMPConnection(object):
                 break
             for var_bind in var_bind_table:
                 results.append((var_bind[0], var_bind[1]))
-
         return results
+
+    async def walk(self, oid):
+        """Walk OIDs under `oid`. Returns a list of (oid, value) tuples."""
+        return await self._do_walk(ObjectType(ObjectIdentity(oid)), mp_model=0)
+
+    async def walkMib(self, mib_name, obj_name, mib_dirs=None):
+        """Walk a MIB table by symbolic name. Returns a list of (oid, value) tuples.
+
+        :param mib_name: MIB module name (e.g. 'PDU2-MIB')
+        :param obj_name: Object name within the MIB (e.g. 'measurementsOutletSensorValue')
+        :param mib_dirs: List of directories containing compiled MIB modules
+        """
+        identity = ObjectIdentity(mib_name, obj_name)
+        for d in (mib_dirs or []):
+            identity.addMibSource(d)
+        return await self._do_walk(ObjectType(identity), mp_model=1)
 
 
 @implementer(IDuctSource)

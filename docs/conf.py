@@ -15,10 +15,21 @@
 import sys
 import os
 
-# If extensions (or modules to document with autodoc) are in another directory,
-# add these directories to sys.path here. If the directory is relative to the
-# documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.abspath('../'))
+
+# Workaround for Sphinx 9.1.0 bug: extract_summary crashes on empty documents.
+import sphinx.ext.autosummary as _autosummary
+_orig_extract_summary = _autosummary.extract_summary
+
+def _safe_extract_summary(doc, settings):
+    if not doc:
+        return ''
+    try:
+        return _orig_extract_summary(doc, settings)
+    except IndexError:
+        return ''
+
+_autosummary.extract_summary = _safe_extract_summary
 
 # -- General configuration ------------------------------------------------
 
@@ -30,8 +41,11 @@ sys.path.insert(0, os.path.abspath('../'))
 # ones.
 extensions = [
     'sphinx.ext.autodoc',
+    'sphinx.ext.autosummary',
     'sphinx.ext.viewcode',
 ]
+
+autosummary_generate = True
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
