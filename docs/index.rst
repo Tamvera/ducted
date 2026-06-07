@@ -1,17 +1,30 @@
-.. Duct documentation master file, created by
-   sphinx-quickstart on Fri Oct 17 21:58:31 2014.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+.. Duct documentation master file
 
-Welcome to Duct's documentation!
-==================================
+Duct - a pluggable Python telemetry pipeline
+============================================
 
-Duct is a modular gateway and event router built using Python asyncio.
-It can be used as a monitoring agent and ETL framework for a wide range
-of applications, and provides a simple yet "powerful" plugin mechanism
-to expand its capabilities.
+Duct is an asyncio daemon that polls *sources* on configurable intervals and
+routes the resulting events to *outputs*. Both are plain Python classes:
+anything Python can reach - a socket, a file, an HTTP API, a subprocess, an
+SSH session, a hardware sensor - can be a source or an output.
 
-Contents:
+**What makes it different:**
+
+- **Sources and outputs can run network servers.** The Prometheus output
+  hosts an HTTP scrape endpoint; the sFlow source is a UDP collector; the
+  Riemann source acts as a full Riemann TCP server. Duct can *receive*
+  telemetry from other systems, not only emit it.
+- **SSH remote checks, no remote agent.** Mark any source ``use_ssh: true``
+  and it runs on a remote host over a pooled SSH connection.
+- **Modern, backend-agnostic.** InfluxDB 3, Prometheus, NATS
+  (JetStream + SenML/CBOR), Elasticsearch, Graphite, and more.
+- **Fine-grained routing.** Route individual sources to specific outputs or
+  sets of outputs.
+- **Blueprint macros.** DRY config: define a toolbox of checks once and
+  expand it across a list of hosts with a single block.
+
+Contents
+--------
 
 .. toctree::
     :maxdepth: 3
@@ -23,7 +36,8 @@ Contents:
     examples
 
 
-API Documentation:
+API Documentation
+-----------------
 
 .. toctree::
     :maxdepth: 2
@@ -39,4 +53,3 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-

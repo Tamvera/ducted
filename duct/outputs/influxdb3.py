@@ -28,7 +28,7 @@ class InfluxDB3(Output):
     :type database: str
     :param token: Authentication token (default: None)
     :type token: str
-    :param precision: Timestamp precision — nanosecond, microsecond, millisecond,
+    :param precision: Timestamp precision - nanosecond, microsecond, millisecond,
                       or second (default: nanosecond)
     :type precision: str
     :param maxsize: Maximum queue backlog size (default: 250000, 0 disables)

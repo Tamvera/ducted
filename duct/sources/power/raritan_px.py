@@ -74,7 +74,7 @@ class RaritanPX(SNMP):
             index = parts[-2]
             sensor_key = parts[-1]
         else:
-            # Numeric OID fallback — last two components are index and sensor type
+            # Numeric OID fallback - last two components are index and sensor type
             parts = oid_str.split('.')
             if len(parts) < 2:
                 return None
