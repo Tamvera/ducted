@@ -1,7 +1,7 @@
 # Duct
 
 [![CI](https://github.com/Tamvera/ducted/actions/workflows/ci.yml/badge.svg)](https://github.com/Tamvera/ducted/actions/workflows/ci.yml)
-[![Latest Docs](https://readthedocs.org/projects/duct/badge/?version=latest)](http://duct.readthedocs.org)
+[![Latest Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://tamvera.github.io/ducted/)
 
 I want to talk to you about ducts. Do your ducts seem old-fashioned? Out of date? Duct is a modular monitoring agent and event router built on Python asyncio (Python 3.11+).
 It collects metrics from multiple sources and routes them to multiple outputs - currently
@@ -51,4 +51,4 @@ ductd -c duct.yml
 
 ## Documentation
 
-Full documentation is at <http://duct.readthedocs.org/>
+Full documentation is at <https://tamvera.github.io/ducted/>
