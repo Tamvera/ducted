@@ -15,7 +15,7 @@ def scan_modules(name):
     for node in mod_path.rglob("**/*.py"):
         if node.is_file() and node.name != "__init__.py":
             filepath = node.relative_to(BASE_DIR)
-            module = str(filepath).rstrip('.py').replace('/', '.')
+            module = str(filepath.parents[0]/filepath.stem).replace('/', '.')
             modules.append(module)
 
     modules.sort()

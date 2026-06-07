@@ -15,10 +15,10 @@ duct.protocol.i2c
    :members:
    :show-inheritance:
 
-duct.protocol.icm
+duct.protocol.icmp
 ===================================
 
-.. automodule:: duct.protocol.icm
+.. automodule:: duct.protocol.icmp
    :members:
    :show-inheritance:
 

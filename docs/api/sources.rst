@@ -43,10 +43,10 @@ duct.sources.generator
    :members:
    :show-inheritance:
 
-duct.sources.haprox
+duct.sources.haproxy
 ===================================
 
-.. automodule:: duct.sources.haprox
+.. automodule:: duct.sources.haproxy
    :members:
    :show-inheritance:
 
@@ -197,10 +197,10 @@ duct.sources.sflow
    :members:
    :show-inheritance:
 
-duct.sources.snm
+duct.sources.snmp
 ===================================
 
-.. automodule:: duct.sources.snm
+.. automodule:: duct.sources.snmp
    :members:
    :show-inheritance:
 
