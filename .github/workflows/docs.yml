@@ -26,7 +26,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install sphinx groundwork-sphinx-theme
+          pip install sphinx alabaster
           pip install -e .
 
       - name: Build docs
