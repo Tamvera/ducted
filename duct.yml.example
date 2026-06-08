@@ -1,11 +1,5 @@
 # Config file for Duct
 
-# Output details
-outputs:
-    - output: duct.outputs.riemann.RiemannTCP
-      server: 127.0.0.1
-      port: 5555
-
 # Default TTL for events (default: 60 seconds)
 # It should be noted if Duct loses its connection to an output it will purge
 # queued events if their age exceeds the TTL.
@@ -18,19 +12,24 @@ ttl: 60.0
 # timestamps.
 interval: 1.0
 
+# Output details
+outputs:
+  - output: duct.outputs.prometheus.Prometheus
+    port: 9100
+
 # Sources
 sources:
-    - service: load
-      source: duct.sources.linux.basic.LoadAverage
-      interval: 2.0
+  - service: load
+    source: duct.sources.linux.basic.LoadAverage
+    interval: 2.0
 
-    - service: cpu
-      source: duct.sources.linux.basic.CPU
-      interval: 2.0
-      critical: {
-        cpu: "> 0.1"
-      }
+  - service: cpu
+    source: duct.sources.linux.basic.CPU
+    interval: 2.0
+    critical: {
+      cpu: "> 0.1"
+    }
 
-    - service: memory
-      source: duct.sources.linux.basic.Memory
-      interval: 2.0
+  - service: memory
+    source: duct.sources.linux.basic.Memory
+    interval: 2.0
