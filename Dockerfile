@@ -15,4 +15,4 @@ RUN pip install -e .
 
 USER 65534
 
-CMD twistd --pidfile=/tmp/duct.pid -n duct -c /duct/duct.yml
+CMD ductd -c /duct/duct.yml

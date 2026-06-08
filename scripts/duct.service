@@ -1,0 +1,25 @@
+[Unit]
+Description=Duct monitoring agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=duct
+Group=duct
+ExecStart=/var/lib/duct/venv/bin/ductd -c /etc/duct/duct.yml
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ductd
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/duct
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
