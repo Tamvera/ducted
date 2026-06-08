@@ -33,6 +33,17 @@ Duct is an asyncio daemon that polls *sources* on configurable intervals and rou
 
 ## Installation
 
+### System wide on Linux, with a systemd script
+```bash
+curl -o - https://raw.githubusercontent.com/Tamvera/ducted/refs/heads/master/scripts/install.sh | sh
+```
+
+### With docker
+```bash
+docker run -i -v ./duct.yml:/duct/duct.yml ghcr.io/tamvera/ducted:latest
+```
+
+### With pip
 ```bash
 pip install ducted
 ```

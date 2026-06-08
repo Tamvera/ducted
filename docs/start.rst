@@ -4,7 +4,17 @@ Getting started
 Installation
 ============
 
-Requires Python 3.11 or newer::
+
+System wide on Linux, with a systemd script::
+
+    $ curl -o - https://raw.githubusercontent.com/Tamvera/ducted/refs/heads/master/scripts/install.sh | sh
+
+With docker::
+
+    $ docker run -i -v ./duct.yml:/duct/duct.yml ghcr.io/tamvera/ducted:latest
+
+
+With pip (Requires Python 3.11 or newer)::
 
     $ pip install ducted
 
