@@ -1,5 +1,7 @@
 # Duct
 
+I want to talk to you about ducts. Do your ducts seem old-fashioned? Out of date?
+
 [![CI](https://github.com/Tamvera/ducted/actions/workflows/ci.yml/badge.svg)](https://github.com/Tamvera/ducted/actions/workflows/ci.yml)
 [![Latest Docs](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://tamvera.github.io/ducted/)
 
