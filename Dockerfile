@@ -9,7 +9,7 @@ RUN mkdir -p /duct/conf.d
 
 ADD duct duct
 ADD pyproject.toml .
-ADD docker/duct.yml.example duct.yml
+ADD docker/duct.yml duct.yml
 
 RUN pip install -e .
 
