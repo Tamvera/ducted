@@ -27,6 +27,11 @@ class Nats(Output):
     :param prefix: Prefix added to topics (default: "")
     :type prefix: str
 
+    :param topic: Topic template, formatted with the event's fields, e.g.
+                  "{hostname}.{service}" or "metrics.{attributes[region]}.{service}"
+                  (default: "{hostname}.{service}")
+    :type topic: str
+
     :param format: Serialisation format - json, senml-json, senml-cbor (default: senml-json)
     :type format: str
 
@@ -59,6 +64,7 @@ class Nats(Output):
 
         self.servers = self.config.get("servers", ["nats://localhost:4222"])
         self.prefix = self.config.get("prefix", "")
+        self.topic = self.config.get("topic", "{hostname}.{service}")
         self.format = self.config.get("format", "senml-json")
         self.inter = float(self.config.get("interval", 1.0))
         self.use_jetstream = bool(self.config.get("jetstream", False))
@@ -117,13 +123,21 @@ class Nats(Output):
     def _transform_event(self, event: Event) -> bytes:
         return self.transformers[self.format](event)
 
+    def _build_topic(self, event: Event) -> str:
+        topic = self.topic.format_map(vars(event))
+        if self.prefix:
+            topic = f"{self.prefix}.{topic}"
+        return topic
+
     async def sendEvents(self, events: list[Event]):
         "Send batches of events to NATS or JetStream"
         for ev in events:
-            if self.prefix:
-                topic = f"{self.prefix}.{ev.hostname}.{ev.service}"
-            else:
-                topic = f"{ev.hostname}.{ev.service}"
+            try:
+                topic = self._build_topic(ev)
+            except (KeyError, IndexError, AttributeError, TypeError):
+                log.exception("Failed to build topic from %r for event %s",
+                              self.topic, ev.service)
+                continue
             payload = self._transform_event(ev)
             try:
                 if self.use_jetstream:

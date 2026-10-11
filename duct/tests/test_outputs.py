@@ -256,6 +256,31 @@ class TestNATSOutput:
         assert decoded.attributes["chicken"] == "little"
 
     @pytest.mark.asyncio
+    async def test_nats_output_topic_template(self, service):
+        ev = Event('ok', 'sky', 'Chicken alert', 2.0, 30.0,
+                   tags=['prod'], attributes={"region": "eu"},
+                   hostname='testhost')
+        nats_mod.nats = FakeNATS()
+        out = nats_mod.Nats({"topic": "{attributes[region]}.{state}.{service}",
+                             "prefix": "duct"}, service)
+        await out.createClient()
+        await out.eventsReceived([ev])
+        await out._tick()
+
+        topic, _ = out.nc.messages[0]
+        assert topic == "duct.eu.ok.sky"
+
+    @pytest.mark.asyncio
+    async def test_nats_output_topic_template_missing_key(self, service, event):
+        nats_mod.nats = FakeNATS()
+        out = nats_mod.Nats({"topic": "{attributes[nope]}.{service}"}, service)
+        await out.createClient()
+        await out.eventsReceived([event])
+        await out._tick()
+
+        assert out.nc.messages == []
+
+    @pytest.mark.asyncio
     async def test_nats_output_cbor(self, service, event):
         nats_mod.nats = FakeNATS()
         out = nats_mod.Nats({"format": "senml-cbor"}, service)
