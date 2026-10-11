@@ -41,6 +41,9 @@ class Nats(Source):
     :param durable: Durable consumer name for JetStream subscriptions (default: "ducted")
     :type durable: str
 
+    :param append_topic: Append the topic to the service name for events
+    :type append_topic: bool
+
     :param credentials_file: Path to NATS credentials (.creds) file
     :type credentials_file: str
 
@@ -66,6 +69,7 @@ class Nats(Source):
         self.format = self.config.get("format", "senml-json")
         self.use_jetstream = bool(self.config.get("jetstream", False))
         self.durable = self.config.get("durable", "ducted")
+        self.append_topic = self.config.get("append_topic", False)
 
         self.credentials_file = self.config.get("credentials_file")
         self.nkey_seed_file = self.config.get("nkey_seed_file")
@@ -147,6 +151,8 @@ class Nats(Source):
     async def _get_event(self, message):
         try:
             ev = self.transformers[self.format](message.data)
+            if self.append_topic:
+                ev.service = f"{message.subject}.{ev.service}"
             self.queueBack([ev])
         except Exception:
             log.exception(
