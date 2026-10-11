@@ -281,6 +281,22 @@ class TestNATSOutput:
         assert out.nc.messages == []
 
     @pytest.mark.asyncio
+    async def test_nats_output_cbor_ext(self, service, event):
+        nats_mod.nats = FakeNATS()
+        out = nats_mod.Nats({"format": "senml-cbor-extended"}, service)
+        await out.createClient()
+        await out.eventsReceived([event])
+        await out._tick()
+
+        topic, payload = out.nc.messages[0]
+        assert topic.endswith(".sky")
+
+        decoded = senml_cbor_to_event(payload)
+        assert decoded.service == "sky"
+        assert decoded.metric == pytest.approx(event.metric)
+        assert decoded.state == event.state
+
+    @pytest.mark.asyncio
     async def test_nats_output_cbor(self, service, event):
         nats_mod.nats = FakeNATS()
         out = nats_mod.Nats({"format": "senml-cbor"}, service)
@@ -294,7 +310,7 @@ class TestNATSOutput:
         decoded = senml_cbor_to_event(payload)
         assert decoded.service == "sky"
         assert decoded.metric == pytest.approx(event.metric)
-        assert decoded.state == event.state
+        assert decoded.state == 'ok'
 
     @pytest.mark.asyncio
     async def test_nats_output_json(self, service, event):

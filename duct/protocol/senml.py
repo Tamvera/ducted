@@ -12,7 +12,7 @@ import cbor2
 from duct.objects import Event
 
 
-def event_to_senml_pack(event: Event) -> list:
+def event_to_senml_pack(event: Event, extended_attributes:bool=True) -> list:
     """Convert a Duct Event to a SenML record pack (list of dicts)."""
     pack = [
         {
@@ -22,20 +22,23 @@ def event_to_senml_pack(event: Event) -> list:
             "v": event.metric,
         }
     ]
-    if event.state:
-        pack.append({"n": event.service + "/state", "vs": event.state})
-    if event.description:
-        pack.append({"n": event.service + "/description", "vs": event.description})
-    if event.ttl:
-        pack.append({"n": event.service + "/ttl", "v": float(event.ttl)})
-    if event.tags:
-        pack.append({"n": event.service + "/tags", "vs": ",".join(event.tags)})
-    if event.attributes:
-        for k, v in event.attributes.items():
-            if isinstance(v, (int, float)):
-                pack.append({"n": f"{event.service}/attr/{k}", "v": float(v)})
-            else:
-                pack.append({"n": f"{event.service}/attr/{k}", "vs": str(v)})
+
+    if extended_attributes:
+        # We don't always want this extra overhead
+        if event.state:
+            pack.append({"n": event.service + "/state", "vs": event.state})
+        if event.description:
+            pack.append({"n": event.service + "/description", "vs": event.description})
+        if event.ttl:
+            pack.append({"n": event.service + "/ttl", "v": float(event.ttl)})
+        if event.tags:
+            pack.append({"n": event.service + "/tags", "vs": ",".join(event.tags)})
+        if event.attributes:
+            for k, v in event.attributes.items():
+                if isinstance(v, (int, float)):
+                    pack.append({"n": f"{event.service}/attr/{k}", "v": float(v)})
+                else:
+                    pack.append({"n": f"{event.service}/attr/{k}", "vs": str(v)})
     return pack
 
 
@@ -101,9 +104,12 @@ def senml_to_event(data: bytes | str, default_ttl: float = 60.0) -> Event:
 
 
 def event_to_senml_cbor(event: Event) -> bytes:
-    """Serialise a Duct Event to SenML-CBOR bytes."""
-    return cbor2.dumps(event_to_senml_pack(event))
+    """Serialise a Duct Event to SenML-CBOR bytes, only values."""
+    return cbor2.dumps(event_to_senml_pack(event, extended_attributes=False))
 
+def event_to_senml_cbor_extended(event: Event) -> bytes:
+    """Serialise a Duct Event to SenML-CBOR bytes with extended attributes."""
+    return cbor2.dumps(event_to_senml_pack(event))
 
 def senml_cbor_to_event(data: bytes, default_ttl: float = 60.0) -> Event:
     """Deserialise SenML-CBOR bytes to a Duct Event."""

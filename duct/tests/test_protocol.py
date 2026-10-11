@@ -9,6 +9,7 @@ from duct.protocol.senml import (
     event_to_senml,
     senml_to_event,
     event_to_senml_cbor,
+    event_to_senml_cbor_extended,
     senml_cbor_to_event,
     event_to_json,
     json_to_event,
@@ -54,7 +55,7 @@ class TestSenMLPack:
     def test_pack_secondary_records(self):
         ev = _make_event(state="critical", description="high load",
                          tags=["prod"], hostname="h", service="cpu")
-        pack = event_to_senml_pack(ev)
+        pack = event_to_senml_pack(ev, True)
         names = {r["n"] for r in pack}
         assert "cpu/state" in names
         assert "cpu/description" in names
@@ -63,39 +64,39 @@ class TestSenMLPack:
 
     def test_pack_state_value(self):
         ev = _make_event(state="warning", service="mem", hostname="h")
-        pack = event_to_senml_pack(ev)
+        pack = event_to_senml_pack(ev, True)
         state_rec = next(r for r in pack if r.get("n") == "mem/state")
         assert state_rec["vs"] == "warning"
 
     def test_pack_tags_joined(self):
         ev = _make_event(tags=["a", "b", "c"], service="s", hostname="h")
-        pack = event_to_senml_pack(ev)
+        pack = event_to_senml_pack(ev, True)
         tags_rec = next(r for r in pack if r.get("n") == "s/tags")
         assert tags_rec["vs"] == "a,b,c"
 
     def test_pack_numeric_attribute(self):
         ev = _make_event(attributes={"count": 5}, service="s", hostname="h")
-        pack = event_to_senml_pack(ev)
+        pack = event_to_senml_pack(ev, True)
         attr_rec = next(r for r in pack if r.get("n") == "s/attr/count")
         assert attr_rec.get("v") == 5.0
         assert "vs" not in attr_rec
 
     def test_pack_string_attribute(self):
         ev = _make_event(attributes={"zone": "eu-west"}, service="s", hostname="h")
-        pack = event_to_senml_pack(ev)
+        pack = event_to_senml_pack(ev, True)
         attr_rec = next(r for r in pack if r.get("n") == "s/attr/zone")
         assert attr_rec.get("vs") == "eu-west"
         assert "v" not in attr_rec
 
     def test_pack_no_tags_when_empty(self):
         ev = _make_event(tags=[], service="s", hostname="h")
-        pack = event_to_senml_pack(ev)
+        pack = event_to_senml_pack(ev, True)
         names = [r.get("n") for r in pack]
         assert "s/tags" not in names
 
     def test_pack_no_attributes_when_none(self):
         ev = _make_event(attributes=None, service="s", hostname="h")
-        pack = event_to_senml_pack(ev)
+        pack = event_to_senml_pack(ev, True)
         names = [r.get("n") for r in pack]
         assert not any("attr" in (n or "") for n in names)
 
@@ -106,7 +107,7 @@ class TestSenMLPack:
 
 class TestSenMLRoundTrip:
     def _roundtrip(self, ev):
-        return senml_pack_to_event(event_to_senml_pack(ev))
+        return senml_pack_to_event(event_to_senml_pack(ev, True))
 
     def test_hostname_preserved(self):
         ev = _make_event(hostname="myhost.local")
@@ -192,14 +193,19 @@ class TestSenMLCBOR:
         ev = _make_event(service="temp.sensor")
         assert senml_cbor_to_event(event_to_senml_cbor(ev)).service == "temp.sensor"
 
+    def test_roundtrip_full_extended(self):
+        ev = _make_event()
+        rt = senml_cbor_to_event(event_to_senml_cbor_extended(ev))
+        assert rt.hostname == ev.hostname
+        assert rt.metric == pytest.approx(ev.metric)
+        assert rt.state == ev.state
+
     def test_roundtrip_full(self):
         ev = _make_event()
         rt = senml_cbor_to_event(event_to_senml_cbor(ev))
         assert rt.hostname == ev.hostname
         assert rt.metric == pytest.approx(ev.metric)
-        assert rt.state == ev.state
-        assert rt.tags == ev.tags
-
+        assert rt.description == ""
 
 class TestPlainJSON:
     def test_returns_bytes(self):

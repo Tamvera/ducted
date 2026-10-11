@@ -12,7 +12,7 @@ import nats
 from nats.aio.client import Client as NATS
 
 from duct.objects import Output, Event
-from duct.protocol.senml import event_to_senml, event_to_senml_cbor, event_to_json
+from duct.protocol.senml import event_to_senml, event_to_senml_cbor, event_to_senml_cbor_extended, event_to_json
 
 
 log = logging.getLogger(__name__)
@@ -78,6 +78,7 @@ class Nats(Output):
         self.transformers = {
             "senml-json": event_to_senml,
             "senml-cbor": event_to_senml_cbor,
+            "senml-cbor-extended": event_to_senml_cbor_extended,
             "json": event_to_json,
         }
 
